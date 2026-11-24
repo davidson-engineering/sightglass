@@ -142,6 +142,7 @@ class Monitor:
         self.layout: list[Element | Group] = []
         self.version = 0
         self.layout_version = 0
+        self.accepted = 0  # values taken in, for measuring a feed's rate
         self.rejected = 0
         self.signals = Signals()
         self._elements: dict[str, Element] = {}
@@ -347,6 +348,7 @@ class Monitor:
                     changed.append(element.id)
                     accepted.append((key, value))
         if changed:
+            self.accepted += len(accepted)
             now = monotonic()
             for id in changed:
                 self._updated[id] = now

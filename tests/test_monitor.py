@@ -106,6 +106,7 @@ def test_strict_monitor_rejects_unknown_ids_and_reports_once(caplog):
     assert "nope" not in monitor
     assert monitor["speed"].value == "ok"
     assert monitor.rejected == 4
+    assert monitor.accepted == 1  # only "speed": a count of values taken in
     messages = [record.getMessage() for record in caplog.records]
     assert len(messages) == 3  # the repeat of "nope" is logged at DEBUG
     assert "'nope'" in messages[0] and "no element" in messages[0]
