@@ -21,7 +21,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run sightglass --demo               # see the generic page with every element type
 uv run sightglass --demo launch --open  # the showcase (README screenshot); python -m sightglass.launch --at 60 starts mid-flight
 uv run sightglass --demo plot --open    # 100 waveforms at 20 Hz on value-vs-time plots (data-plot)
-uv run sightglass --demo load --open    # a fake PLC's 1000 signals over real ADS, measured; python -m sightglass.load --signals 5000 for more
+uv run sightglass --demo load --open    # a fake PLC's 1000 signals over real ADS, measured; uv run python -m sightglass.load --signals 5000 for more
 uv run python examples/robot_dashboard/dashboard.py --simulate   # the segment-display panel
 uv run --all-extras python docs/screenshot.py   # retake the README screenshots (~3 min; `plot` for just the plot demo's)
 ```

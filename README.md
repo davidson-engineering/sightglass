@@ -432,9 +432,17 @@ every 50 ms in sum reads of 500. The page shows a heat map of every signal
 over the last 10 minutes, ten of them as lines, and what it all costs,
 measured once a second inside the dashboard's process. 10 to 20 seconds in,
 and then every 40 to 80 seconds, one signal glitches for 100 ms; the log
-names it and the heat map marks it. It needs the ads extra (`pip install "sightglass[ads]"`), Linux or
-macOS, and port 48898 free. `python -m sightglass.load --signals 2000 --rate
-50` changes the load.
+names it and the heat map marks it. It needs the ads extra
+(`pip install "sightglass[ads]"`), Linux or macOS, and port 48898 free. To
+change the load, run the demo as a module, with the Python that has
+sightglass installed:
+
+```bash
+python -m sightglass.load --signals 2000 --rate 50 --open
+```
+
+From a clone of this repository, put `uv run` in front: `uv run python -m
+sightglass.load ...`.
 
 ![The load demo: readings of 20,749 values a second at 6% of a core, a heat map of 1000 signals with two glitches marked, ten signals as lines, and a log of the glitches](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/load-demo.png)
 

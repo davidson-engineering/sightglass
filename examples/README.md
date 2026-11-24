@@ -68,6 +68,8 @@ sightglass --demo load --open
 python -m sightglass.load --signals 5000 --rate 20 --open   # more load
 ```
 
+From a clone, put `uv run` in front of each: `uv run python -m sightglass.load ...`.
+
 ## 1. Hello, dashboard
 
 A Python program reports what it's doing with `start()` and `set()`. Nothing
