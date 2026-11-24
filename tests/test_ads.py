@@ -22,11 +22,11 @@ if sys.platform == "win32":
 from aiohttp import ClientSession
 
 from sightglass import Monitor, WebDashboard, WriteError
+from sightglass.fake_plc import FakePlc, FakePlcServer
 from sightglass.monitor import WRITES_ENV
 from sightglass.sources.ads import AdsSource
 
 from .conftest import run_cli, stop, until
-from .fake_plc import FakePlc, FakePlcServer
 
 TARGET = "127.0.0.1.1.1"
 

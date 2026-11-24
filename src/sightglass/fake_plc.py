@@ -1,6 +1,10 @@
-"""A fake TwinCAT PLC for end-to-end tests: pyads' ADS test server (real TCP,
-real AMS packets) with memory, a symbol table and a symbol version, so
-AdsSource talks to it exactly as it would to a PLC."""
+"""A fake TwinCAT PLC, for tests and ``sightglass --demo load``: pyads' ADS
+test server (real TCP, real AMS packets) with memory, a symbol table and a
+symbol version, so AdsSource talks to it exactly as it would to a PLC.
+
+Needs pyads (``pip install "sightglass[ads]"``). It listens on
+127.0.0.1:48898, where pyads connects, so one runs at a time; reach it as
+``AdsSource("127.0.0.1.1.1", [...])``."""
 
 from __future__ import annotations
 
