@@ -267,3 +267,23 @@ async def test_zmq_push_pull_keeps_messages_sent_before_the_monitor_starts(consu
 def test_zmq_rejects_unknown_patterns():
     with pytest.raises(ValueError, match="'sub' or 'pull'"):
         ZmqSource(pattern="pub")
+
+
+async def test_simulated_source_keeps_its_rate_when_generating_takes_time():
+    """Updates are spaced from one start to the next, so the time a value
+    takes to make (or to apply) doesn't slow the rate down."""
+    from sightglass import SimulatedSource
+
+    def slow(seconds):
+        time.sleep(0.004)  # a value that takes 4 ms to make
+        return {"t": seconds}
+
+    source = SimulatedSource(slow, rate=100)
+    started = time.perf_counter()
+    count = 0
+    async for _ in source.updates():
+        count += 1
+        if count == 50:
+            break
+    # 49 intervals of 10 ms; waiting 10 ms after each 4 ms would take 0.69 s.
+    assert time.perf_counter() - started < 0.6
