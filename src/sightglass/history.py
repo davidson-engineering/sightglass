@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import math
 import numbers
+import re
 from array import array
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -209,17 +210,44 @@ class History:
                 track = tracks[id] = Track(self.slots, slot - 1, "f")
             track.record(number, slot)
 
-    def window(self, start: float, end: float, points: int) -> Window:
+    def matching(self, ids: Iterable[str]) -> list[str]:
+        """``ids`` with each pattern replaced by the ids it matches, in the
+        order they first sent a number. In a pattern, ``*`` stands for any
+        characters (dots included): ``"wave.*"``, ``"MAIN.*.fPosition"``."""
+        result: dict[str, None] = {}
+        for id in ids:
+            if "*" not in id:
+                result[id] = None
+                continue
+            pattern = re.compile(".*".join(map(re.escape, id.split("*"))))
+            result.update(
+                dict.fromkeys(i for i in self._tracks if pattern.fullmatch(i))
+            )
+        return list(result)
+
+    def window(
+        self,
+        start: float,
+        end: float,
+        points: int | None = None,
+        *,
+        step: float | None = None,
+    ) -> Window:
         """The slots from ``start`` to ``end`` (``monotonic()`` times), in at
-        most ``points`` points."""
-        if points < 2:
-            raise ValueError("points must be at least 2")
+        most ``points`` points, or in points of ``step`` seconds (rounded to
+        whole slots), e.g. the ``step`` an earlier query returned."""
         if end < start:
             raise ValueError("end must not be before start")
         first, last = self.slot_at(start), self.slot_at(end)
+        if step is not None:
+            if not (step > 0 and math.isfinite(step)):
+                raise ValueError("step must be a positive number of seconds")
+            return Window(first, last, max(round(step / self.resolution), 1))
+        if points is None or points < 2:
+            raise ValueError("points must be at least 2")
         count = last - first + 1
-        step = 1 if count <= points else math.ceil(count / (points - 1))
-        return Window(first, last, step)
+        slots = 1 if count <= points else math.ceil(count / (points - 1))
+        return Window(first, last, slots)
 
     def trace(self, id: str, window: Window) -> list[Point] | None:
         """``id``'s points in ``window``, or None if it has no history."""

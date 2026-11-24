@@ -289,14 +289,26 @@ class WebDashboard:
                 "SECONDS (Monitor(history=...))\n"
             )
         try:
-            ids, start, end, points = _history_query(request.query, history.seconds)
+            ids, start, end, points, step = _history_query(
+                request.query, history.seconds
+            )
+            ids = history.matching(ids)
+            if len(ids) > HISTORY_MAX_IDS:
+                raise ValueError(
+                    f"at most {HISTORY_MAX_IDS} ids per request; these match {len(ids)}"
+                )
+            # Slots are kept in monotonic() time; the page plots wall-clock time.
+            offset = time.time() - monotonic()
+            end = min(end - offset, monotonic())  # no points for what hasn't happened
+            start = min(start - offset, end)
+            window = history.window(start, end, points, step=step)
+            if window.points > HISTORY_MAX_POINTS:
+                raise ValueError(
+                    f"that step gives {window.points} points; at most "
+                    f"{HISTORY_MAX_POINTS} per request"
+                )
         except ValueError as error:
             raise web.HTTPBadRequest(text=f"{error}\n") from None
-        # Slots are kept in monotonic() time; the page plots wall-clock time.
-        offset = time.time() - monotonic()
-        end = min(end - offset, monotonic())  # no points for what hasn't happened
-        start = min(start - offset, end)
-        window = history.window(start, end, points)
         signals = {}
         for id in ids:  # one at a time, letting values arrive in between
             signals[id] = history.trace(id, window)
@@ -403,19 +415,31 @@ def _has_display() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
-def _history_query(query: Any, seconds: float) -> tuple[list[str], float, float, int]:
-    """``GET /history``'s ids, window (Unix times) and points, or ValueError."""
+def _history_query(
+    query: Any, seconds: float
+) -> tuple[list[str], float, float, int | None, float | None]:
+    """``GET /history``'s ids, window (Unix times) and points or step, or
+    ValueError."""
     ids = query.getall("id", [])
     if not ids:
         raise ValueError("name the ids to send: ?id=speed&id=X.velocity")
     if len(ids) > HISTORY_MAX_IDS:
         raise ValueError(f"at most {HISTORY_MAX_IDS} ids per request")
-    try:
-        points = int(query.get("points", HISTORY_POINTS))
-    except ValueError:
-        raise ValueError("points must be a whole number") from None
-    if not 2 <= points <= HISTORY_MAX_POINTS:
-        raise ValueError(f"points must be from 2 to {HISTORY_MAX_POINTS}")
+    points: int | None = None
+    step: float | None = None
+    if "step" in query:
+        if "points" in query:
+            raise ValueError("give step or points, not both")
+        step = _seconds(query, "step", 0)
+        if step <= 0:
+            raise ValueError("step must be a positive number of seconds")
+    else:
+        try:
+            points = int(query.get("points", HISTORY_POINTS))
+        except ValueError:
+            raise ValueError("points must be a whole number") from None
+        if not 2 <= points <= HISTORY_MAX_POINTS:
+            raise ValueError(f"points must be from 2 to {HISTORY_MAX_POINTS}")
     end = _seconds(query, "to", time.time())
     if "from" in query and "seconds" in query:
         raise ValueError("give from or seconds, not both")
@@ -428,7 +452,7 @@ def _history_query(query: Any, seconds: float) -> tuple[list[str], float, float,
         if length < 0:
             raise ValueError("seconds must not be negative")
         start = end - length
-    return ids, start, end, points
+    return ids, start, end, points, step
 
 
 def _seconds(query: Any, name: str, default: float) -> float:

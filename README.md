@@ -350,7 +350,7 @@ WebSocket of its own (`/ws/signals`) only while open.
 
 ![The signals panel over the launch demo: every id with its value and a chart of the last minute, from the end of the countdown through liftoff](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/signals-panel.png)
 
-#### History for plots
+#### History and value-vs-time plots
 
 To plot values against time over minutes, keep their history:
 `sightglass --history 600`, or `Monitor(history=600)` in Python. The dashboard
@@ -370,12 +370,14 @@ curl 'http://127.0.0.1:8080/history?id=speed&seconds=60&points=600'
 
 The `signals` list shows four of the 401 points.
 
-- **Choose the ids:** repeat `id` for each one, up to 100 per request.
+- **Choose the ids:** repeat `id` for each one, up to 100 per request. `*`
+  matches any characters: `id=wave.*` is every id that starts `wave.`.
 - **Choose the window:** give `seconds` (the last that many, the whole history
   by default), or `from` and `to` as Unix times.
 - **Choose the number of points:** `points` is the most you want, from 2 to
   10000 (default 600); use the plot's width in pixels. You may get fewer, as
-  here, because each point covers a whole number of 50 ms slots.
+  here, because each point covers a whole number of 50 ms slots. Or give
+  `step`, in seconds per point, in place of `points`.
 
 Each point covers `step` seconds, starting at `start` (a Unix time). A point
 is the value, `[lowest, highest]` when it changed during the point, so a short
@@ -388,6 +390,29 @@ over 10 minutes. Recording 1000 values 20 times a second takes about 2% of a
 CPU core. Reducing 10 minutes of one id takes about 1 ms. Values are kept as
 float32, about 7 significant digits, which is more than a plot can show.
 `GET /values` keeps the exact values.
+
+A page plots them without any JavaScript of its own: a `data-plot` element
+draws the ids it names over the last `data-seconds` seconds.
+
+```html
+<div data-plot="wave.* level" data-seconds="60" style="height: 400px"></div>
+<script src="/_sightglass/sightglass.js"></script>
+```
+
+Separate several ids or patterns with spaces. The lines and labels use the
+element's CSS `color` and `font`. The plot loads its window once, at about one
+point per pixel. It then asks only for points since its newest one, once per
+point and at most 20 times a second, and draws each point from its lowest to
+its highest value. While it can't get points, the element has
+`data-plot-error` with the reason, for example a dashboard without
+`--history`.
+
+`sightglass --demo plot --open` plots 100 waveforms sampled 20 times a second,
+each with an occasional spike one sample long. The last minute shows every
+sample. The last 10 minutes shows several samples per point, and every spike
+still shows.
+
+![The plot demo: 100 stacked waveforms over the last minute, each with short vertical spikes, and below them the last 10 minutes](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/plot-demo.png)
 
 #### Themes
 

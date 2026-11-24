@@ -89,6 +89,8 @@ def test_build_reads_piped_stdin(monkeypatch):
         (["--serial", "auto", "--binary", "X=1"], "BYTE=NAME"),
         (["--demo", "launch", "--title", "X"], "its own page and data; drop --title"),
         (["--demo", "launch", "--history", "60"], "drop --history"),
+        (["--demo", "plot", "--terminal"], "--demo plot has its own page and data"),
+        (["--demo", "plot", "--serial", "auto"], "drop --serial"),
         (["--history", "0"], "seconds must be a positive number"),
         (["--vars", "MAIN.*"], "--vars and --allow-writes go with --ads"),
         (["--ads", "5.1.2.3.1.1"], "--ads needs --vars naming what to show"),

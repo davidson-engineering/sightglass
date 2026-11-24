@@ -41,6 +41,18 @@ sightglass, so once installed, `sightglass --demo launch --open` is enough. Its 
 [src/sightglass/launch/](../src/sightglass/launch/): copy the folder as a
 starting point for a page of your own.
 
+## Plots against time
+
+100 waveforms sampled 20 times a second, each with an occasional spike one
+sample long, on two live plots: the last minute and the last 10 minutes. The
+page is plain HTML: each plot is a `data-plot` element. It is not in a
+release yet (0.2.0 is the latest); from a clone of this repository, run
+`uv run sightglass --demo plot --open`. From the next release on:
+
+```bash
+sightglass --demo plot --open
+```
+
 ## 1. Hello, dashboard
 
 A Python program reports what it's doing with `start()` and `set()`. Nothing

@@ -47,6 +47,7 @@ examples:
   sightglass --demo                     simulated data, every kind of element
   sightglass --demo launch --open       the showcase: a rocket launch, live
   sightglass --demo launch --terminal   ... drawn in the terminal too
+  sightglass --demo plot --open         100 waveforms at 20 Hz, plotted against time
 """
 
 
@@ -117,10 +118,11 @@ def parser() -> argparse.ArgumentParser:
         "--demo",
         nargs="?",
         const="elements",
-        choices=["elements", "launch"],
-        metavar="launch",
-        help="show simulated data: every kind of element on the generic page, or "
-        "with 'launch', a rocket launch on a hand-built page, fed by three programs",
+        choices=["elements", "launch", "plot"],
+        metavar="launch|plot",
+        help="show simulated data: every kind of element on the generic page; "
+        "with 'launch', a rocket launch on a hand-built page, fed by three "
+        "programs; with 'plot', 100 waveforms at 20 Hz on value-vs-time plots",
     )
 
     display = p.add_argument_group("display")
@@ -226,6 +228,28 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
 
 def launch(args: argparse.Namespace) -> None:
     """The launch demo: its own page and data, until Ctrl+C."""
+    _own_page_demo(args)
+    from .launch import run
+
+    run(
+        host=args.host,
+        port=args.port,
+        open_browser=args.open,
+        terminal=args.terminal,
+        theme=args.theme,
+    )
+
+
+def plot(args: argparse.Namespace) -> None:
+    """The plot demo: its own page and data, until Ctrl+C."""
+    _own_page_demo(args, terminal=False)
+    from .plot import run
+
+    run(host=args.host, port=args.port, open_browser=args.open, theme=args.theme)
+
+
+def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
+    """Refuse options that a demo with its own page and data would ignore."""
     ignored = {
         "--serial": args.serial,
         "--csv": args.csv,
@@ -240,20 +264,12 @@ def launch(args: argparse.Namespace) -> None:
         "--token": args.token,
         "--stale-after": args.stale_after,
         "--history": args.history is not None,
+        "--terminal": args.terminal and not terminal,
     }
     if given := [flag for flag, value in ignored.items() if value]:
         raise ValueError(
-            f"--demo launch has its own page and data; drop {', '.join(given)}"
+            f"--demo {args.demo} has its own page and data; drop {', '.join(given)}"
         )
-    from .launch import run
-
-    run(
-        host=args.host,
-        port=args.port,
-        open_browser=args.open,
-        terminal=args.terminal,
-        theme=args.theme,
-    )
 
 
 def guide() -> str:
@@ -329,6 +345,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.demo == "launch":
             launch(args)
+        elif args.demo == "plot":
+            plot(args)
         else:
             monitor, sources, outputs = build(args)
             monitor.serve(sources=sources, outputs=outputs)

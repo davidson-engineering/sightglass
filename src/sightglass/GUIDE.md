@@ -28,7 +28,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
-| Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page) |
+| Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots) |
 
 Choose `start()` when the dashboard should live and die with the program.
 Choose a separate `sightglass` process (fed by `Client`, curl or a pipe) when
@@ -116,7 +116,8 @@ id: 96 MB for 1000 ids over 10 minutes). The answer has `start` (a Unix time),
 `step` (seconds per point), `points`, and `signals`, a list of points for each
 id. Each point is a number, `[lowest, highest]`, or `null` for no number.
 Use `from`/`to` (Unix times) in place of `seconds` for a fixed window, and
-set `points` to the plot's width in pixels.
+set `points` to the plot's width in pixels. `id=wave.*` names every id that
+starts `wave.`. To draw them on a page, see `data-plot` in section 5.
 
 ### Piping a program's output
 
@@ -253,6 +254,7 @@ route in this guide (one command each), plus a Docker deployment.
 <div data-bind="rate.values" data-mode="sparkline" style="height: 24px"></div>
 <div class="needle" data-bind="pressure.ratio" data-mode="var"></div>
 <span data-bind="wind" data-stale-after="3"></span>
+<div data-plot="wave.* level" data-seconds="60" style="height: 400px"></div>
 <script src="/_sightglass/sightglass.js"></script>
 ```
 
@@ -266,6 +268,10 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
   `--value` to the number (unset if it isn't one), e.g.
   `.needle { rotate: calc(var(--value) * 270deg - 135deg) }` for a `RangeBar`
   ratio, or `height: calc(var(--value) * 100%)` for a level.
+- **Plots against time:** `data-plot` names ids or patterns (space-separated,
+  `*` for any characters) and draws them over the last `data-seconds`, live,
+  in the element's CSS `color` and `font`. It needs the dashboard's history
+  (`--history`); without it the element gets `data-plot-error`.
 - **Several feeds:** `data-stale-after="3"` gives an element
   `data-stale="true"` while its value hasn't arrived for 3 s (or ever), so
   CSS can show which source went quiet, e.g.

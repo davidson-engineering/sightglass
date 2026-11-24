@@ -1,7 +1,8 @@
 """Take the README's screenshots of the launch demo: its page in both themes,
-its signals panel, and its terminal screen.
+its signals panel, and its terminal screen; then of the plot demo.
 
-    uv run --all-extras python docs/screenshot.py
+    uv run --all-extras python docs/screenshot.py         # all of them, ~3 min
+    uv run --all-extras python docs/screenshot.py plot    # the plot demo, ~70 s
 
 Runs `sightglass --demo launch --terminal` from the start of its countdown in
 a 120 x 36 pseudo-terminal, as someone trying it would (on port 8080, as the
@@ -138,5 +139,43 @@ def main() -> None:
     )
 
 
+def plot() -> None:
+    """`sightglass --demo plot` once its last minute is full: plot-demo.png."""
+    demo = subprocess.Popen(
+        [sys.executable, "-m", "sightglass", "--demo", "plot", "--port", "0"],
+        stdin=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+    try:
+        url = demo.stderr.readline().split()[1]  # "Dashboard: <url>"
+        time.sleep(62)
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page(
+                viewport={"width": 1440, "height": 1300}, device_scale_factor=2
+            )
+            page.goto(url)
+            for i in range(2):
+                page.locator("[data-plot]").nth(i).wait_for()
+            page.wait_for_function(
+                "document.querySelectorAll('[data-plot-signals=\"100\"]').length == 2"
+            )
+            page.wait_for_timeout(500)
+            shot = DOCS / "plot-demo.png"
+            page.screenshot(path=shot, full_page=True)
+            Image.open(shot).convert("RGB").quantize(256).save(shot, optimize=True)
+            browser.close()
+    finally:
+        demo.terminate()
+        demo.communicate(timeout=10)
+    print("Saved plot-demo.png")
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["plot"]:
+        plot()
+    else:
+        main()
+        plot()

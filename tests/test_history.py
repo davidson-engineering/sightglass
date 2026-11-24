@@ -270,3 +270,44 @@ async def test_a_long_query_lets_values_keep_arriving(client, monkeypatch):
         task.cancel()
     first, second = (i for i, event in enumerate(events) if event == "trace")
     assert "other" in events[first:second]
+
+
+async def test_get_history_expands_a_pattern_to_the_ids_it_matches(client):
+    """``*`` stands for any characters, so a page can plot a whole group."""
+    client.monitor.update({"wave.1": 1, "wave.2": 2, "speed": 3, "wave.10": 10})
+    response = await client.get("/history", params=[("id", "wave.*"), ("id", "x*")])
+    result = await response.json()
+    assert list(result["signals"]) == ["wave.1", "wave.2", "wave.10"]  # as first sent
+
+
+async def test_get_history_takes_a_step_so_a_plot_can_fetch_just_new_points(client):
+    """A plot asks once for its window, then again from its newest point at
+    the same step: the points line up, and the first one is redone."""
+    client.monitor.update({"speed": 3})
+    whole = await (
+        await client.get("/history", params={"id": "speed", "seconds": "6"})
+    ).json()
+    newest = whole["start"] + (whole["points"] - 1) * whole["step"]
+    client.monitor.update({"speed": 9})
+    params = {"id": "speed", "from": str(newest), "step": str(whole["step"])}
+    new = await (await client.get("/history", params=params)).json()
+    assert new["step"] == whole["step"]
+    offset = (new["start"] - whole["start"]) / whole["step"]
+    # Within microseconds: the wall clock and monotonic() drift apart a little.
+    assert offset == pytest.approx(round(offset), abs=1e-3)
+    assert new["signals"]["speed"][-1] in (9, [3, 9])
+
+
+@pytest.mark.parametrize(
+    ("params", "error"),
+    [
+        ({"id": "x", "step": "0"}, "step"),
+        ({"id": "x", "step": "fast"}, "step"),
+        ({"id": "x", "step": "1", "points": "10"}, "step or points"),
+        ({"id": "x", "step": "0.05", "seconds": "600"}, "points"),  # 12001 points
+    ],
+)
+async def test_get_history_says_what_is_wrong_with_a_step(client, params, error):
+    response = await client.get("/history", params=params)
+    assert response.status == 400
+    assert error in await response.text()
