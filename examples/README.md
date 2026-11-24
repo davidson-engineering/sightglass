@@ -45,12 +45,10 @@ starting point for a page of your own.
 
 100 waveforms sampled 20 times a second, each with an occasional spike one
 sample long, on two live plots: the last minute and the last 10 minutes. The
-page is plain HTML: each plot is a `data-plot` element. It is not in a
-release yet (0.2.0 is the latest); from a clone of this repository, run
-`uv run sightglass --demo plot --open`. From the next release on:
+page is plain HTML: each plot is a `data-plot` element.
 
 ```bash
-sightglass --demo plot --open
+uvx --from "sightglass[web]" sightglass --demo plot --open
 ```
 
 ## How fast it is: a fake PLC under load
@@ -59,16 +57,19 @@ A fake TwinCAT PLC, in a process of its own, updates 1000 signals 20 times a
 second; the dashboard reads them all over real ADS and shows what that costs,
 measured as it runs: values a second, CPU, the event loop's worst delay, the
 delay from PLC to dashboard, memory. A heat map shows every signal over the
-last 10 minutes and marks the rare glitch. Needs the ads extra, Linux or
-macOS; like the plot demo, it isn't released yet (from a clone:
-`uv run --all-extras sightglass --demo load --open`).
+last 10 minutes and marks the rare glitch. Needs Linux or macOS (it reads
+the fake PLC with pyads, the `ads` extra).
 
 ```bash
-sightglass --demo load --open
-python -m sightglass.load --signals 5000 --rate 20 --open   # more load
+uvx --from "sightglass[web,ads]" sightglass --demo load --open
 ```
 
-From a clone, put `uv run` in front of each: `uv run python -m sightglass.load ...`.
+For more load, run it as a module with the Python that has
+`sightglass[web,ads]` installed (from a clone, put `uv run` in front):
+
+```bash
+python -m sightglass.load --signals 5000 --rate 20 --open
+```
 
 ## 1. Hello, dashboard
 
