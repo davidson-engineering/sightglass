@@ -448,6 +448,48 @@ async def test_plot_draws_ids_against_time_and_keeps_up(page, serve):
     await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 50")
 
 
+# For each third of a heat map's cells (its three rows), how many pixels are
+# drawn at full strength, and how many at all.
+HEAT_ROWS = """el => {
+  const canvas = el.querySelector("canvas");
+  const { width, height } = canvas;
+  const data = canvas.getContext("2d").getImageData(0, 0, width, height).data;
+  const lines = height - 26 * devicePixelRatio;  // above the 16px time axis
+  const rows = [0, 1, 2].map(() => ({ strong: 0, drawn: 0 }));
+  for (let y = 0; y < lines; y++) {
+    const row = rows[Math.floor((y / lines) * 3)];
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > 240) row.strong++;
+      if (alpha > 0) row.drawn++;
+    }
+  }
+  return rows;
+}"""
+
+
+async def test_heatmap_gives_each_id_a_row_where_a_spike_stands_out(page, serve):
+    """A row per id, each scaled to its own range: a wave that swings fills
+    half its row at full strength; a steady one with one spike, only the
+    spike."""
+    monitor = Monitor(history=60)
+    plot = (
+        '<div id="heat" data-plot="a b c" data-plot-mode="heatmap"'
+        ' data-seconds="3" style="width: 300px; height: 176px; font: 16px sans-serif;'
+        ' color: rgb(0, 0, 255)"></div>'
+    )
+    url = serve(plot, monitor)
+    for k in range(30):  # 1.5 s at 20 Hz
+        monitor.update({"a": 1 + k % 2, "b": 50 if k == 15 else 1, "c": k})
+        await asyncio.sleep(0.05)
+    await page.goto(url)
+    await expect(page.locator("#heat")).to_have_attribute("data-plot-signals", "3")
+    swing, spike, ramp = await page.locator("#heat").evaluate(HEAT_ROWS)
+    assert swing["strong"] > 5 * spike["strong"] > 0
+    assert spike["drawn"] > 10 * spike["strong"]  # the rest of its row is faint
+    assert ramp["strong"] > 0
+
+
 async def test_plot_says_why_it_has_nothing_without_history(page, serve):
     plot = '<div id="plot" data-plot="speed" style="height: 100px"></div>'
     await page.goto(serve(plot, Monitor()))

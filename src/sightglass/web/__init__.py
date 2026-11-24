@@ -60,7 +60,9 @@ THEMES = ("classic", "terminal")
 HISTORY_POINTS = 600
 """Points per id from ``GET /history`` unless it asks for a number."""
 HISTORY_MAX_POINTS = 10_000
-HISTORY_MAX_IDS = 100
+HISTORY_MAX_IDS = 1000
+HISTORY_SLICE = 0.002
+"""Seconds of reducing ids between handing the event loop back."""
 
 # /_sightglass/theme.js, loaded in a page's <head>: applies the viewer's
 # theme before anything is drawn (no flash of the other one).
@@ -310,9 +312,12 @@ class WebDashboard:
         except ValueError as error:
             raise web.HTTPBadRequest(text=f"{error}\n") from None
         signals = {}
-        for id in ids:  # one at a time, letting values arrive in between
+        sliced = monotonic()
+        for id in ids:  # a few ms at a time, letting values arrive in between
             signals[id] = history.trace(id, window)
-            await asyncio.sleep(0)
+            if monotonic() - sliced > HISTORY_SLICE:
+                await asyncio.sleep(0)
+                sliced = monotonic()
         result = {**history.describe(window), "signals": signals}
         result["start"] += offset
         return web.json_response(result)

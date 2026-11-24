@@ -13,6 +13,13 @@
 // highest value, so a spike shorter than a point still shows. Times come
 // from the dashboard's clock, so a viewer's wrong clock doesn't matter.
 //
+// With data-plot-mode="heatmap" it draws one row per id instead, a cell per
+// point, for more ids than lines can show (a whole PLC, say). Each row is
+// scaled to its own lowest and highest value in view, from faint to the
+// element's full color; a point that spans two values shows the one further
+// from the middle of its row, so a spike either way stands out. With more
+// ids than pixel rows, each pixel shows the strongest of the cells it covers.
+//
 // The element gets data-plot-signals (how many ids it draws) and
 // data-plot-range (the lowest and highest value in view) once points arrive,
 // and data-plot-error with the reason when it can't get any.
@@ -77,7 +84,8 @@ async function fetchPoints(plot) {
   const reload = !plot.step || seconds !== plot.seconds || width !== plot.width;
   if (reload) {
     params.set("seconds", seconds);
-    params.set("points", Math.min(width, 10000));
+    const heat = plot.el.dataset.plotMode === "heatmap"; // cells of 2 px
+    params.set("points", Math.min(heat ? Math.ceil(width / 2) : width, 10000));
   } else {
     // From the newest point, which was still filling: it comes back complete.
     params.set("from", plot.start + (pointCount(plot) - 1) * plot.step);
@@ -130,6 +138,7 @@ function draw(plot) {
   }
   const g = canvas.getContext("2d");
   g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  g.globalAlpha = 1; // the context keeps the last draw's settings
   g.clearRect(0, 0, width, height);
   const style = getComputedStyle(el);
   g.fillStyle = g.strokeStyle = style.color;
@@ -168,6 +177,8 @@ function draw(plot) {
   const y = (v) => lines - ((v - low + pad) / (high - low + 2 * pad)) * lines;
   const from = plot.end - seconds;
   const x = (t) => ((t - from) / seconds) * width;
+  const heat = el.dataset.plotMode === "heatmap";
+  if (heat) drawHeat(g, plot, from, seconds, width, lines, ratio, style.color);
 
   // The time axis: a line every few seconds, labelled back from now.
   const tick = TICKS.find((s) => (s / seconds) * width >= 70) ?? seconds;
@@ -188,6 +199,7 @@ function draw(plot) {
     g.textAlign = ago === 0 ? "right" : at < 30 ? "left" : "center";
     g.fillText(ago === 0 ? "now" : `−${describe(ago)}`, at, lines + axis / 2);
   }
+  if (heat) return;
   g.textAlign = "left";
   g.textBaseline = "top";
   g.fillText(format(high), 3, 2);
@@ -221,6 +233,62 @@ function draw(plot) {
   }
   g.stroke();
   g.restore();
+}
+
+function drawHeat(g, plot, from, seconds, width, lines, ratio, color) {
+  const all = [...plot.series.values()];
+  const rows = Math.max(Math.min(all.length, Math.round(lines * ratio)), 1);
+  const columns = Math.max(Math.ceil(seconds / plot.step), 1);
+  const offset = Math.round((plot.start - from) / plot.step); // column of point 0
+  const [red, green, blue] = rgb(color);
+  const image = new ImageData(columns, rows);
+  const cells = image.data;
+  for (let s = 0; s < all.length; s++) {
+    const series = all[s];
+    let low = Infinity;
+    let high = -Infinity;
+    for (const point of series) {
+      if (point == null) continue;
+      const [a, b] = Array.isArray(point) ? point : [point, point];
+      if (a < low) low = a;
+      if (b > high) high = b;
+    }
+    if (low === Infinity) continue;
+    const span = high - low || 1;
+    const middle = (high + low) / 2;
+    const row = Math.floor((s * rows) / all.length);
+    for (let i = 0; i < series.length; i++) {
+      const point = series[i];
+      const column = offset + i;
+      if (point == null || column < 0 || column >= columns) continue;
+      const [a, b] = Array.isArray(point) ? point : [point, point];
+      const value = Math.abs(b - middle) >= Math.abs(a - middle) ? b : a;
+      const alpha = Math.round(255 * (0.08 + (0.92 * (value - low)) / span));
+      const at = (row * columns + column) * 4;
+      if (alpha <= cells[at + 3]) continue; // the strongest cell wins the pixel
+      cells[at] = red;
+      cells[at + 1] = green;
+      cells[at + 2] = blue;
+      cells[at + 3] = alpha;
+    }
+  }
+  plot.bitmap ??= document.createElement("canvas");
+  plot.bitmap.width = columns;
+  plot.bitmap.height = rows;
+  plot.bitmap.getContext("2d").putImageData(image, 0, 0);
+  g.save();
+  g.globalAlpha = 1;
+  g.imageSmoothingEnabled = false; // crisp cells, a spike stays one cell
+  g.drawImage(plot.bitmap, 0, 0, width, lines);
+  g.restore();
+}
+
+// A CSS color as [red, green, blue], whatever form getComputedStyle gives.
+function rgb(color) {
+  const swatch = new OffscreenCanvas(1, 1).getContext("2d");
+  swatch.fillStyle = color;
+  swatch.fillRect(0, 0, 1, 1);
+  return [...swatch.getImageData(0, 0, 1, 1).data.slice(0, 3)];
 }
 
 function describe(seconds) {

@@ -372,7 +372,7 @@ curl 'http://127.0.0.1:8080/history?id=speed&seconds=60&points=600'
 
 The `signals` list shows four of the 401 points.
 
-- **Choose the ids:** repeat `id` for each one, up to 100 per request. `*`
+- **Choose the ids:** repeat `id` for each one, up to 1000 per request. `*`
   matches any characters: `id=wave.*` is every id that starts `wave.`.
 - **Choose the window:** give `seconds` (the last that many, the whole history
   by default), or `from` and `to` as Unix times.

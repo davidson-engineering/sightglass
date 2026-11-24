@@ -206,7 +206,7 @@ async def test_get_history_takes_a_window_in_unix_seconds(client):
         ({"id": "x", "from": "10", "to": "5"}, "from"),
         ({"id": "x", "seconds": "-1"}, "seconds"),
         ({"id": "x", "seconds": "nan"}, "seconds"),
-        ([("id", str(n)) for n in range(101)], "ids"),
+        ([("id", str(n)) for n in range(1001)], "ids"),
     ],
 )
 async def test_get_history_says_what_is_wrong(client, params, error):
@@ -245,14 +245,16 @@ def test_a_point_with_a_gap_spans_the_numbers_around_it():
 
 
 async def test_a_long_query_lets_values_keep_arriving(client, monkeypatch):
-    """Ids are reduced one at a time, handing the event loop back between them,
-    so a big request doesn't hold up incoming values (or other pages)."""
+    """Ids are reduced a few milliseconds' worth at a time, handing the event
+    loop back in between, so a big request doesn't hold up incoming values
+    (or other pages)."""
     history = client.monitor.history
     events = []
     trace = history.trace
 
     def traced(id, window):
         events.append("trace")
+        time.sleep(0.003)  # a slow id: more than a slice of the loop
         return trace(id, window)
 
     monkeypatch.setattr(history, "trace", traced)
