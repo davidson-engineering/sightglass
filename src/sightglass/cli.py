@@ -25,6 +25,7 @@ from .decoders import (
     JsonDecoder,
     KeyValueDecoder,
 )
+from .history import History
 from .monitor import WRITES_ENV, Monitor, Output, Source
 from .sources.stdin import StdinSource
 
@@ -147,6 +148,12 @@ def parser() -> argparse.ArgumentParser:
         help="dim values when no data has arrived for this long",
     )
     display.add_argument(
+        "--history",
+        type=float,
+        metavar="SECONDS",
+        help="keep this long of every numeric value for plots (GET /history)",
+    )
+    display.add_argument(
         "--terminal",
         action="store_true",
         help="draw in this terminal instead of serving a web page "
@@ -166,6 +173,8 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
         sources.append(demo.source())
     else:
         monitor = Monitor()
+    if args.history is not None:
+        monitor.history = History(args.history)
 
     if args.serial:
         from . import SerialSource
@@ -230,6 +239,7 @@ def launch(args: argparse.Namespace) -> None:
         "--title": args.title != "Monitor",
         "--token": args.token,
         "--stale-after": args.stale_after,
+        "--history": args.history is not None,
     }
     if given := [flag for flag, value in ignored.items() if value]:
         raise ValueError(

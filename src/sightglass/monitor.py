@@ -22,6 +22,7 @@ from time import monotonic
 from typing import Any, Protocol, Self, TypeVar
 
 from .elements import JSON, Element, IndicatorLamp, TextElement
+from .history import History
 from .signals import Signals
 
 logger = logging.getLogger(__name__)
@@ -122,12 +123,22 @@ class Monitor:
     only what, something changed.
 
     :attr:`signals` keeps every accepted value by the id it was sent to, as
-    sent, with its last minute: the dashboard's signals panel.
+    sent, with its last minute: the dashboard's signals panel. With
+    ``history=seconds``, :attr:`history` keeps that long of every numeric
+    one, in 50 ms slots, for value-vs-time plots (``GET /history``); it is
+    None otherwise. Set it before the monitor starts.
     """
 
-    def __init__(self, *, strict: bool = False, max_elements: int = 500) -> None:
+    def __init__(
+        self,
+        *,
+        strict: bool = False,
+        max_elements: int = 500,
+        history: float | None = None,
+    ) -> None:
         self.strict = strict
         self.max_elements = max_elements
+        self.history = None if history is None else History(history)
         self.layout: list[Element | Group] = []
         self.version = 0
         self.layout_version = 0
@@ -341,6 +352,8 @@ class Monitor:
                 self._updated[id] = now
             self._mark_changed(changed)
             self.signals.record(accepted, now, self.version)
+            if self.history is not None:
+                self.history.record(accepted, now)
 
     def _apply(self, key: str, value: Any) -> Element | None:
         """Update the element ``key`` addresses; return it, or None if rejected."""

@@ -18,6 +18,11 @@ the current values from ``/values``::
     curl -d 'progress=5 status=running' http://127.0.0.1:8080/update
     curl http://127.0.0.1:8080/values
 
+A monitor with ``history`` also answers ``GET /history``: the last minutes
+of any ids, reduced to about one point per pixel of a plot::
+
+    curl 'http://127.0.0.1:8080/history?id=MAIN.fTemp&id=MAIN.fFlow&seconds=60'
+
 Every page that loads ``sightglass.js`` also has a signals panel (the ` key):
 every value sent, by id, with a chart of its last minute, streamed over a
 second WebSocket (``/ws/signals``) only while the panel is open.
@@ -31,8 +36,10 @@ import errno
 import hmac
 import json
 import logging
+import math
 import os
 import sys
+import time
 import webbrowser
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -50,6 +57,10 @@ logger = logging.getLogger(__name__)
 ASSETS = Path(__file__).parent / "static"
 MONITOR_KEY = web.AppKey("monitor", Monitor)
 THEMES = ("classic", "terminal")
+HISTORY_POINTS = 600
+"""Points per id from ``GET /history`` unless it asks for a number."""
+HISTORY_MAX_POINTS = 10_000
+HISTORY_MAX_IDS = 100
 
 # /_sightglass/theme.js, loaded in a page's <head>: applies the viewer's
 # theme before anything is drawn (no flash of the other one).
@@ -153,6 +164,7 @@ class WebDashboard:
         app.router.add_get("/ws/signals", self._signals_websocket)
         app.router.add_post("/update", self._receive)
         app.router.add_get("/values", self._values)
+        app.router.add_get("/history", self._history)
         app.router.add_get("/_sightglass/theme.js", self._theme_script)
         app.router.add_static("/_sightglass/", ASSETS)
         if self.static_dir:
@@ -269,6 +281,30 @@ class WebDashboard:
     async def _values(self, request: web.Request) -> web.Response:
         return web.json_response(request.app[MONITOR_KEY].snapshot())
 
+    async def _history(self, request: web.Request) -> web.Response:
+        history = request.app[MONITOR_KEY].history
+        if history is None:
+            raise web.HTTPNotFound(
+                text="this dashboard keeps no history: start it with --history "
+                "SECONDS (Monitor(history=...))\n"
+            )
+        try:
+            ids, start, end, points = _history_query(request.query, history.seconds)
+        except ValueError as error:
+            raise web.HTTPBadRequest(text=f"{error}\n") from None
+        # Slots are kept in monotonic() time; the page plots wall-clock time.
+        offset = time.time() - monotonic()
+        end = min(end - offset, monotonic())  # no points for what hasn't happened
+        start = min(start - offset, end)
+        window = history.window(start, end, points)
+        signals = {}
+        for id in ids:  # one at a time, letting values arrive in between
+            signals[id] = history.trace(id, window)
+            await asyncio.sleep(0)
+        result = {**history.describe(window), "signals": signals}
+        result["start"] += offset
+        return web.json_response(result)
+
     def _snapshot(self, monitor: Monitor) -> dict[str, Any]:
         return {
             "type": "snapshot",
@@ -365,6 +401,46 @@ def _has_display() -> bool:
     if not sys.platform.startswith("linux"):
         return True
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def _history_query(query: Any, seconds: float) -> tuple[list[str], float, float, int]:
+    """``GET /history``'s ids, window (Unix times) and points, or ValueError."""
+    ids = query.getall("id", [])
+    if not ids:
+        raise ValueError("name the ids to send: ?id=speed&id=X.velocity")
+    if len(ids) > HISTORY_MAX_IDS:
+        raise ValueError(f"at most {HISTORY_MAX_IDS} ids per request")
+    try:
+        points = int(query.get("points", HISTORY_POINTS))
+    except ValueError:
+        raise ValueError("points must be a whole number") from None
+    if not 2 <= points <= HISTORY_MAX_POINTS:
+        raise ValueError(f"points must be from 2 to {HISTORY_MAX_POINTS}")
+    end = _seconds(query, "to", time.time())
+    if "from" in query and "seconds" in query:
+        raise ValueError("give from or seconds, not both")
+    if "from" in query:
+        start = _seconds(query, "from", 0)
+        if start > end:
+            raise ValueError("from must not be after to")
+    else:
+        length = _seconds(query, "seconds", seconds)
+        if length < 0:
+            raise ValueError("seconds must not be negative")
+        start = end - length
+    return ids, start, end, points
+
+
+def _seconds(query: Any, name: str, default: float) -> float:
+    if name not in query:
+        return default
+    try:
+        value = float(query[name])
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a number of seconds")
+    return value
 
 
 def parse_posted_updates(body: bytes) -> list[dict[str, Any]]:

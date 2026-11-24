@@ -350,6 +350,45 @@ WebSocket of its own (`/ws/signals`) only while open.
 
 ![The signals panel over the launch demo: every id with its value and a chart of the last minute, from the end of the countdown through liftoff](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/signals-panel.png)
 
+#### History for plots
+
+To plot values against time over minutes, keep their history:
+`sightglass --history 600`, or `Monitor(history=600)` in Python. The dashboard
+then records every id that sends a number, as sent, in 50 ms slots for the
+last 600 seconds. `GET /history` returns any of those ids, reduced to the
+number of points a plot needs:
+
+```bash
+sightglass --history 600 &
+curl -d 'speed=3' http://127.0.0.1:8080/update
+curl 'http://127.0.0.1:8080/history?id=speed&seconds=60&points=600'
+```
+
+```json
+{"start": 1763900000.05, "step": 0.15, "points": 401, "signals": {"speed": [null, 3, [2.5, 4], 3]}}
+```
+
+The `signals` list shows four of the 401 points.
+
+- **Choose the ids:** repeat `id` for each one, up to 100 per request.
+- **Choose the window:** give `seconds` (the last that many, the whole history
+  by default), or `from` and `to` as Unix times.
+- **Choose the number of points:** `points` is the most you want, from 2 to
+  10000 (default 600); use the plot's width in pixels. You may get fewer, as
+  here, because each point covers a whole number of 50 ms slots.
+
+Each point covers `step` seconds, starting at `start` (a Unix time). A point
+is the value, `[lowest, highest]` when it changed during the point, so a short
+spike still shows, or `null` where there was no number. Points start at
+multiples of `step`, so asking again for a window of the same length returns
+the same points plus any new ones. An id with no history is `null`.
+
+History costs 8 bytes per slot per id that sends numbers: 96 MB for 1000 ids
+over 10 minutes. Recording 1000 values 20 times a second takes about 2% of a
+CPU core. Reducing 10 minutes of one id takes about 1 ms. Values are kept as
+float32, about 7 significant digits, which is more than a plot can show.
+`GET /values` keeps the exact values.
+
 #### Themes
 
 The generic page and the launch demo come in two themes: **classic**, and

@@ -88,6 +88,8 @@ def test_build_reads_piped_stdin(monkeypatch):
         (["--pull"], "--pull goes with --zmq"),
         (["--serial", "auto", "--binary", "X=1"], "BYTE=NAME"),
         (["--demo", "launch", "--title", "X"], "its own page and data; drop --title"),
+        (["--demo", "launch", "--history", "60"], "drop --history"),
+        (["--history", "0"], "seconds must be a positive number"),
         (["--vars", "MAIN.*"], "--vars and --allow-writes go with --ads"),
         (["--ads", "5.1.2.3.1.1"], "--ads needs --vars naming what to show"),
         (
@@ -137,6 +139,24 @@ def test_post_with_curl_like_request():
             pytest.skip("curl not available")
         assert request.stdout == "204"
         assert asyncio.run(snapshot(url)) == {"temperature": "21.5"}
+    finally:
+        stop(process)
+
+
+def test_history_keeps_the_last_minutes_for_plots():
+    process, url = run_cli("--history", "60")
+    try:
+        for speed in (1, 5, 3):
+            data = f"speed={speed}".encode()
+            with urllib.request.urlopen(f"{url}update", data=data) as response:
+                assert response.status == 204
+        with urllib.request.urlopen(f"{url}history?id=speed&seconds=5") as response:
+            result = json.load(response)
+        trace = [p for p in result["signals"]["speed"] if p is not None]
+        numbers = [n for p in trace for n in (p if isinstance(p, list) else [p])]
+        assert (min(numbers), max(numbers)) == (1, 5)
+        last = trace[-1] if isinstance(trace[-1], list) else [trace[-1]] * 2
+        assert last[0] <= 3 <= last[1]  # held since it arrived
     finally:
         stop(process)
 

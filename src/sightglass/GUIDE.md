@@ -104,6 +104,20 @@ pairs / `id value`. Nested JSON objects address groups: `{"job": {"progress":
 `401` means the dashboard has a `--token` and the request didn't send
 `Authorization: Bearer <token>`.
 
+### Keeping history for value-vs-time plots
+
+```bash
+sightglass --history 600 &      # or Monitor(history=600): the last 10 minutes
+curl 'http://127.0.0.1:8080/history?id=speed&id=X.velocity&seconds=60&points=600'
+```
+
+Every id that sends a number is recorded in 50 ms slots (8 bytes per slot per
+id: 96 MB for 1000 ids over 10 minutes). The answer has `start` (a Unix time),
+`step` (seconds per point), `points`, and `signals`, a list of points for each
+id. Each point is a number, `[lowest, highest]`, or `null` for no number.
+Use `from`/`to` (Unix times) in place of `seconds` for a fixed window, and
+set `points` to the plot's width in pixels.
+
 ### Piping a program's output
 
 ```bash

@@ -12,46 +12,19 @@ numbers have no history; true/false (and on/off, yes/no) chart as 1/0.
 from __future__ import annotations
 
 import math
-import numbers
-from array import array
 from collections.abc import Iterable
 from typing import Any
 
-from .formatting import as_number, default_text
+from .formatting import default_text
+from .history import Point, Track, chart_number
+
+__all__ = ["RESOLUTION", "SLOTS", "Point", "Signal", "Signals", "chart_number"]
 
 RESOLUTION = 0.5
 """Seconds per slot."""
 
 SLOTS = 120
 """Slots kept per signal: a minute."""
-
-Point = float | list[float] | None
-"""One slot as sent to the page: the value, ``[lowest, highest]`` when it
-varied, or None for no number."""
-
-_SWITCHES = {"true": 1.0, "on": 1.0, "yes": 1.0, "false": 0.0, "off": 0.0, "no": 0.0}
-
-
-def chart_number(value: Any) -> float | None:
-    """``value`` as a point on a chart, or None if it isn't a finite number
-    (or true/false, on/off, yes/no: 1/0)."""
-    if type(value) is float:  # the usual case, first
-        return value if math.isfinite(value) else None
-    if isinstance(value, bool):
-        return float(value)
-    if isinstance(value, str):
-        number = as_number(value)
-        if number is None:
-            return _SWITCHES.get(value.strip().lower())
-    elif isinstance(value, numbers.Real):  # NumPy's numbers too
-        number = value
-    else:
-        return None
-    try:
-        number = float(number)
-    except OverflowError:  # an int too big for a float
-        return None
-    return number if math.isfinite(number) else None
 
 
 def slot_at(now: float) -> int:
@@ -62,58 +35,25 @@ def slot_at(now: float) -> int:
 class Signal:
     """One id's latest value and its last :data:`SLOTS` slots."""
 
-    __slots__ = ("_high", "_low", "number", "slot", "updated", "value", "version")
+    __slots__ = ("number", "track", "updated", "value", "version")
 
     def __init__(self, slot: int) -> None:
         self.value: Any = None
         self.number: float | None = None  # the latest value, charted
         self.updated = 0.0
         self.version = 0
-        self.slot = slot  # the newest slot started
-        self._low = array("d", [math.nan]) * SLOTS
-        self._high = array("d", [math.nan]) * SLOTS
+        self.track = Track(SLOTS, slot)
 
     def record(self, value: Any, slot: int, now: float, version: int) -> None:
         """``value`` arrived at ``now``, in ``slot`` (:func:`slot_at`)."""
-        if slot != self.slot:
-            self._start(slot)
-        number = chart_number(value)
-        if number is not None:
-            i = slot % SLOTS
-            low = self._low[i]
-            if math.isnan(low):
-                self._low[i] = self._high[i] = number
-            elif number < low:
-                self._low[i] = number
-            elif number > self._high[i]:
-                self._high[i] = number
-        self.value, self.number = value, number
+        self.number = chart_number(value)
+        self.track.record(self.number, slot)
+        self.value = value
         self.updated, self.version = now, version
-
-    def _start(self, slot: int) -> None:
-        """Start the slots up to ``slot``, each from the value held before it."""
-        held = math.nan if self.number is None else self.number
-        for s in range(max(self.slot + 1, slot - SLOTS + 1), slot + 1):
-            self._low[s % SLOTS] = self._high[s % SLOTS] = held
-        self.slot = max(self.slot, slot)
 
     def trace(self, first: int, last: int) -> list[Point]:
         """Slots ``first`` to ``last``, inclusive."""
-        held = self.number
-        points: list[Point] = []
-        for s in range(first, last + 1):
-            if s > self.slot:  # no value since: the latest holds
-                points.append(held)
-                continue
-            if s <= self.slot - SLOTS:  # forgotten
-                points.append(None)
-                continue
-            low, high = self._low[s % SLOTS], self._high[s % SLOTS]
-            if math.isnan(low):
-                points.append(None)
-            else:
-                points.append(low if low == high else [low, high])
-        return points
+        return self.track.points(first, last)
 
     def to_json(self, first: int, last: int, now: float) -> dict[str, Any]:
         return {
