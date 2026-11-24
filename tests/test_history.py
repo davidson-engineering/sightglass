@@ -206,7 +206,6 @@ async def test_get_history_takes_a_window_in_unix_seconds(client):
         ({"id": "x", "from": "10", "to": "5"}, "from"),
         ({"id": "x", "seconds": "-1"}, "seconds"),
         ({"id": "x", "seconds": "nan"}, "seconds"),
-        ([("id", str(n)) for n in range(1001)], "ids"),
     ],
 )
 async def test_get_history_says_what_is_wrong(client, params, error):
@@ -313,3 +312,28 @@ async def test_get_history_says_what_is_wrong_with_a_step(client, params, error)
     response = await client.get("/history", params=params)
     assert response.status == 400
     assert error in await response.text()
+
+
+async def test_get_history_gives_fewer_points_to_many_ids(client, monkeypatch):
+    """An answer holds at most HISTORY_POINT_BUDGET points in all: more ids,
+    fewer points each, so a heat map of thousands of ids stays a size a
+    page can load."""
+    monkeypatch.setattr("sightglass.web.HISTORY_POINT_BUDGET", 300)
+    client.monitor.update({f"wave.{i}": i for i in range(30)})
+    response = await client.get(
+        "/history", params={"id": "wave.*", "seconds": "60", "points": "600"}
+    )
+    result = await response.json()
+    assert len(result["signals"]) == 30
+    assert result["points"] <= 300 // 30
+    assert all(len(points) == result["points"] for points in result["signals"].values())
+
+
+async def test_get_history_says_when_a_pattern_matches_too_many_ids(
+    client, monkeypatch
+):
+    monkeypatch.setattr("sightglass.web.HISTORY_MAX_IDS", 3)
+    client.monitor.update({f"wave.{i}": i for i in range(5)})
+    response = await client.get("/history", params={"id": "wave.*"})
+    assert response.status == 400
+    assert "at most 3 ids per request; these match 5" in await response.text()

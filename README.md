@@ -372,14 +372,15 @@ curl 'http://127.0.0.1:8080/history?id=speed&seconds=60&points=600'
 
 The `signals` list shows four of the 401 points.
 
-- **Choose the ids:** repeat `id` for each one, up to 1000 per request. `*`
+- **Choose the ids:** repeat `id` for each one, up to 10,000 per request. `*`
   matches any characters: `id=wave.*` is every id that starts `wave.`.
 - **Choose the window:** give `seconds` (the last that many, the whole history
   by default), or `from` and `to` as Unix times.
 - **Choose the number of points:** `points` is the most you want, from 2 to
   10000 (default 600); use the plot's width in pixels. You may get fewer, as
-  here, because each point covers a whole number of 50 ms slots. Or give
-  `step`, in seconds per point, in place of `points`.
+  here, because each point covers a whole number of 50 ms slots, and because
+  one answer holds at most a million points in all (5000 ids get 200 each).
+  Or give `step`, in seconds per point, in place of `points`.
 
 Each point covers `step` seconds, starting at `start` (a Unix time). A point
 is the value, `[lowest, highest]` when it changed during the point, so a short

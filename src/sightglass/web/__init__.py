@@ -60,7 +60,10 @@ THEMES = ("classic", "terminal")
 HISTORY_POINTS = 600
 """Points per id from ``GET /history`` unless it asks for a number."""
 HISTORY_MAX_POINTS = 10_000
-HISTORY_MAX_IDS = 1000
+HISTORY_MAX_IDS = 10_000
+HISTORY_POINT_BUDGET = 1_000_000
+"""Points in one answer at most, all ids together: with many ids, each gets
+fewer (5000 ids, 200 each), so a page can load the answer."""
 HISTORY_SLICE = 0.002
 """Seconds of reducing ids between handing the event loop back."""
 
@@ -303,24 +306,35 @@ class WebDashboard:
             offset = time.time() - monotonic()
             end = min(end - offset, monotonic())  # no points for what hasn't happened
             start = min(start - offset, end)
+            if points is not None and ids:
+                points = max(min(points, HISTORY_POINT_BUDGET // len(ids)), 2)
             window = history.window(start, end, points, step=step)
             if window.points > HISTORY_MAX_POINTS:
                 raise ValueError(
                     f"that step gives {window.points} points; at most "
                     f"{HISTORY_MAX_POINTS} per request"
                 )
+            if window.points * len(ids) > HISTORY_POINT_BUDGET:
+                raise ValueError(
+                    f"that step gives {window.points} points for each of "
+                    f"{len(ids)} ids; at most {HISTORY_POINT_BUDGET} in all"
+                )
         except ValueError as error:
             raise web.HTTPBadRequest(text=f"{error}\n") from None
-        signals = {}
+        # Each id reduced and written as JSON a few ms at a time, letting
+        # values arrive in between: encoding a whole answer at once (16 MB for
+        # 1000 busy ids over 10 minutes) held the loop for 190 ms.
+        parts = []
         sliced = monotonic()
-        for id in ids:  # a few ms at a time, letting values arrive in between
-            signals[id] = history.trace(id, window)
+        for id in ids:
+            parts.append(f"{json.dumps(id)}:{json.dumps(history.trace(id, window))}")
             if monotonic() - sliced > HISTORY_SLICE:
                 await asyncio.sleep(0)
                 sliced = monotonic()
-        result = {**history.describe(window), "signals": signals}
-        result["start"] += offset
-        return web.json_response(result)
+        head = history.describe(window)
+        head["start"] += offset
+        body = f'{json.dumps(head)[:-1]}, "signals": {{{", ".join(parts)}}}}}'
+        return web.Response(text=body, content_type="application/json")
 
     def _snapshot(self, monitor: Monitor) -> dict[str, Any]:
         return {
