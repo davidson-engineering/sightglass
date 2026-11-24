@@ -25,6 +25,7 @@ from .decoders import (
     JsonDecoder,
     KeyValueDecoder,
 )
+from .history import History
 from .monitor import WRITES_ENV, Monitor, Output, Source
 from .sources.stdin import StdinSource
 
@@ -46,6 +47,8 @@ examples:
   sightglass --demo                     simulated data, every kind of element
   sightglass --demo launch --open       the showcase: a rocket launch, live
   sightglass --demo launch --terminal   ... drawn in the terminal too
+  sightglass --demo plot --open         100 waveforms at 20 Hz, plotted against time
+  sightglass --demo load --open         a fake PLC's 1000 signals over ADS, measured
 """
 
 
@@ -116,10 +119,13 @@ def parser() -> argparse.ArgumentParser:
         "--demo",
         nargs="?",
         const="elements",
-        choices=["elements", "launch"],
-        metavar="launch",
-        help="show simulated data: every kind of element on the generic page, or "
-        "with 'launch', a rocket launch on a hand-built page, fed by three programs",
+        choices=["elements", "launch", "plot", "load"],
+        metavar="launch|plot|load",
+        help="show simulated data: every kind of element on the generic page; "
+        "with 'launch', a rocket launch on a hand-built page, fed by three "
+        "programs; with 'plot', 100 waveforms at 20 Hz on value-vs-time plots; "
+        "with 'load', 1000 signals of a fake PLC read over ADS at 20 Hz, and what "
+        "that costs (needs the ads extra)",
     )
 
     display = p.add_argument_group("display")
@@ -147,6 +153,20 @@ def parser() -> argparse.ArgumentParser:
         help="dim values when no data has arrived for this long",
     )
     display.add_argument(
+        "--max-elements",
+        type=int,
+        default=500,
+        metavar="N",
+        help="the most ids that get a display of their own (default: 500); "
+        "raise it for a PLC with more variables",
+    )
+    display.add_argument(
+        "--history",
+        type=float,
+        metavar="SECONDS",
+        help="keep this long of every numeric value for plots (GET /history)",
+    )
+    display.add_argument(
         "--terminal",
         action="store_true",
         help="draw in this terminal instead of serving a web page "
@@ -166,6 +186,11 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
         sources.append(demo.source())
     else:
         monitor = Monitor()
+    if args.max_elements < 1:
+        raise ValueError("--max-elements must be at least 1")
+    monitor.max_elements = args.max_elements
+    if args.history is not None:
+        monitor.history = History(args.history)
 
     if args.serial:
         from . import SerialSource
@@ -217,6 +242,36 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
 
 def launch(args: argparse.Namespace) -> None:
     """The launch demo: its own page and data, until Ctrl+C."""
+    _own_page_demo(args)
+    from .launch import run
+
+    run(
+        host=args.host,
+        port=args.port,
+        open_browser=args.open,
+        terminal=args.terminal,
+        theme=args.theme,
+    )
+
+
+def plot(args: argparse.Namespace) -> None:
+    """The plot demo: its own page and data, until Ctrl+C."""
+    _own_page_demo(args, terminal=False)
+    from .plot import run
+
+    run(host=args.host, port=args.port, open_browser=args.open, theme=args.theme)
+
+
+def load(args: argparse.Namespace) -> None:
+    """The load demo: a fake PLC read over ADS, until Ctrl+C."""
+    _own_page_demo(args, terminal=False)
+    from .load import run
+
+    run(host=args.host, port=args.port, open_browser=args.open, theme=args.theme)
+
+
+def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
+    """Refuse options that a demo with its own page and data would ignore."""
     ignored = {
         "--serial": args.serial,
         "--csv": args.csv,
@@ -230,20 +285,14 @@ def launch(args: argparse.Namespace) -> None:
         "--title": args.title != "Monitor",
         "--token": args.token,
         "--stale-after": args.stale_after,
+        "--history": args.history is not None,
+        "--max-elements": args.max_elements != 500,
+        "--terminal": args.terminal and not terminal,
     }
     if given := [flag for flag, value in ignored.items() if value]:
         raise ValueError(
-            f"--demo launch has its own page and data; drop {', '.join(given)}"
+            f"--demo {args.demo} has its own page and data; drop {', '.join(given)}"
         )
-    from .launch import run
-
-    run(
-        host=args.host,
-        port=args.port,
-        open_browser=args.open,
-        terminal=args.terminal,
-        theme=args.theme,
-    )
 
 
 def guide() -> str:
@@ -319,17 +368,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.demo == "launch":
             launch(args)
+        elif args.demo == "plot":
+            plot(args)
+        elif args.demo == "load":
+            load(args)
         else:
             monitor, sources, outputs = build(args)
             monitor.serve(sources=sources, outputs=outputs)
     except (ImportError, OSError, ValueError) as error:
-        message = error.strerror if isinstance(error, OSError) else None
-        message = message or str(error)
-        if "already in use" in message:
-            message += f", e.g. --port {args.port + 1}"
-        print(f"sightglass: error: {message}", file=sys.stderr)
+        print(error_message(error, args.port), file=sys.stderr)
         return 1
     return 0
+
+
+def error_message(error: Exception, port: int) -> str:
+    """A setup error as one line, with a free port to try if ``port`` is taken."""
+    message = error.strerror if isinstance(error, OSError) else None
+    message = message or str(error)
+    if "already in use" in message:
+        message += f", e.g. --port {port + 1}"
+    return f"sightglass: error: {message}"
 
 
 if __name__ == "__main__":

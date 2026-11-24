@@ -22,11 +22,11 @@ if sys.platform == "win32":
 from aiohttp import ClientSession
 
 from sightglass import Monitor, WebDashboard, WriteError
+from sightglass.fake_plc import FakePlc, FakePlcServer
 from sightglass.monitor import WRITES_ENV
 from sightglass.sources.ads import AdsSource
 
 from .conftest import run_cli, stop, until
-from .fake_plc import FakePlc, FakePlcServer
 
 TARGET = "127.0.0.1.1.1"
 
@@ -134,6 +134,18 @@ async def test_reads_variables_structs_enums_and_arrays_live(fake_plc, consume):
     }
     fake_plc.set("MAIN.nCount", struct.pack("<h", -7))
     await until(lambda: monitor["MAIN.nCount"].value == -7)
+
+
+async def test_reads_more_variables_than_one_sum_read_holds(fake_plc, consume):
+    """1200 variables: three sum reads of at most 500 each, every cycle."""
+    for i in range(1200):
+        fake_plc.add(f"GVL.fSignal{i:04d}", "REAL", struct.pack("<f", i / 2))
+    monitor = Monitor(max_elements=1200)
+    consume(monitor, source(["GVL.*"]))
+    await until(lambda: len(monitor.signals) == 1200, within=5)
+    assert monitor.snapshot()["GVL.fSignal1199"] == "599.5"
+    fake_plc.set("GVL.fSignal0700", struct.pack("<f", -1))
+    await until(lambda: monitor["GVL.fSignal0700"].value == -1)
 
 
 async def test_explains_what_it_left_out(fake_plc, consume, caplog):

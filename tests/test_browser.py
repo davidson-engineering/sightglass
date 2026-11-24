@@ -410,3 +410,158 @@ async def test_launch_demo_page_comes_alive(page):
     finally:
         process.terminate()
         await asyncio.wait_for(process.communicate(), 10)
+
+
+# How many pixels of a plot's canvas are drawn in red.
+RED_PIXELS = """el => {
+  const canvas = el.querySelector("canvas");
+  const { width, height } = canvas;
+  const data = canvas.getContext("2d").getImageData(0, 0, width, height).data;
+  let red = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] > 200 && data[i + 1] < 80 && data[i + 3] > 60) red++;
+  }
+  return red;
+}"""
+
+
+async def test_plot_draws_ids_against_time_and_keeps_up(page, serve):
+    """A data-plot draws its ids (patterns too) from the history, then follows
+    new values: a spike one sample long reaches the plot."""
+    monitor = Monitor(history=60)
+    plot = (
+        '<div id="plot" data-plot="wave.* level" data-seconds="10"'
+        ' style="width: 400px; height: 200px; color: rgb(255, 0, 0)"></div>'
+    )
+    monitor.update({"wave.1": 1, "wave.2": 1.2, "level": 1.1})
+    await page.goto(serve(plot, monitor))
+    await expect(page.locator("#plot")).to_have_attribute("data-plot-signals", "3")
+    await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 1.2")
+    assert await page.locator("#plot").evaluate(RED_PIXELS) > 50  # lines and labels
+    assert await page.locator("#plot canvas").get_attribute("aria-label") == (
+        "3 signals over the last 10 s"
+    )
+
+    monitor.update({"wave.1": 50})  # a spike, one sample long
+    await asyncio.sleep(0.06)
+    monitor.update({"wave.1": 1})
+    await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 50")
+
+
+# For each third of a heat map's cells (its three rows), how many pixels are
+# drawn at full strength, and how many at all.
+HEAT_ROWS = """el => {
+  const canvas = el.querySelector("canvas");
+  const { width, height } = canvas;
+  const data = canvas.getContext("2d").getImageData(0, 0, width, height).data;
+  const lines = height - 26 * devicePixelRatio;  // above the 16px time axis
+  const rows = [0, 1, 2].map(() => ({ strong: 0, drawn: 0 }));
+  for (let y = 0; y < lines; y++) {
+    const row = rows[Math.floor((y / lines) * 3)];
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > 240) row.strong++;
+      if (alpha > 0) row.drawn++;
+    }
+  }
+  return rows;
+}"""
+
+
+async def test_heatmap_gives_each_id_a_row_where_a_spike_stands_out(page, serve):
+    """A row per id, each cell as far as its value is from the id's usual one:
+    a wave that keeps swinging, or ramps, stays faint; a steady value's one
+    spike is at full strength."""
+    monitor = Monitor(history=60)
+    plot = (
+        '<div id="heat" data-plot="a b c" data-plot-mode="heatmap"'
+        ' data-seconds="3" style="width: 300px; height: 176px; font: 16px sans-serif;'
+        ' color: rgb(0, 0, 255)"></div>'
+    )
+    url = serve(plot, monitor)
+    sent = 0
+
+    async def feed():  # live, 20 times a second, as a PLC would be
+        nonlocal sent
+        while True:
+            k = sent
+            monitor.update({"a": 1 + k % 2, "b": 50 if k == 30 else 1, "c": k})
+            sent += 1
+            await asyncio.sleep(0.05)
+
+    feeding = asyncio.create_task(feed())
+    try:
+        await page.goto(url)
+        await expect(page.locator("#heat")).to_have_attribute("data-plot-signals", "3")
+        await until(lambda: sent >= 50, within=5)  # the spike, then more
+        await page.wait_for_timeout(200)  # drawn with the latest points
+        swing, spike, ramp = await page.locator("#heat").evaluate(HEAT_ROWS)
+    finally:
+        feeding.cancel()
+    assert spike["strong"] > 0
+    assert swing["strong"] == ramp["strong"] == 0, (swing, spike, ramp)
+    assert swing["drawn"] > 10 * spike["strong"]  # faint, but there
+
+
+async def test_plot_says_why_it_has_nothing_without_history(page, serve):
+    plot = '<div id="plot" data-plot="speed" style="height: 100px"></div>'
+    await page.goto(serve(plot, Monitor()))
+    await expect(page.locator("#plot")).to_have_attribute(
+        "data-plot-error", re.compile("--history")
+    )
+
+
+async def test_plot_demo_page_comes_alive(page):
+    """sightglass --demo plot: both plots draw all 100 waves."""
+    process = await asyncio.create_subprocess_exec(
+        *[sys.executable, "-m", "sightglass", "--demo", "plot", "--port", "0"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+    try:
+        url = (await process.stderr.readline()).decode().split()[1]
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else 0)
+        await page.goto(url)
+        plots = page.locator("[data-plot]")
+        await expect(plots).to_have_count(2)
+        for i in range(2):
+            await expect(plots.nth(i)).to_have_attribute("data-plot-signals", "100")
+        assert not errors
+    finally:
+        process.terminate()
+        await asyncio.wait_for(process.communicate(), 10)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pyads needs TwinCAT on Windows")
+async def test_load_demo_reads_a_plc_and_measures_itself(page):
+    """sightglass --demo load: the fake PLC's 1000 signals arrive over ADS,
+    the heat map draws them all, and the readings are measured."""
+    process = await asyncio.create_subprocess_exec(
+        *[sys.executable, "-m", "sightglass", "--demo", "load", "--port", "0"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+    try:
+        line = (await asyncio.wait_for(process.stderr.readline(), 20)).decode()
+        assert line.startswith("Dashboard: "), line
+        url = line.split()[1]
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else 0)
+        await page.goto(url)
+        heat = page.locator('[data-plot-mode="heatmap"]')
+        signals = expect(heat).to_have_attribute
+        await signals("data-plot-signals", "1000", timeout=10_000)
+        await expect(page.locator('[data-bind="load.signals"]')).to_have_text("1000")
+        reading = page.locator('.reading[data-bind="load.values"]')
+        await expect(reading).to_have_text(re.compile(r"^\d{4,}$"), timeout=5_000)
+        assert not errors
+    finally:
+        process.terminate()
+        await asyncio.wait_for(process.communicate(), 15)

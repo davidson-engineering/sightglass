@@ -20,10 +20,14 @@ class SimulatedSource:
 
     async def updates(self) -> AsyncIterator[list[Update]]:
         loop = asyncio.get_running_loop()
-        start = loop.time()
+        start = due = loop.time()
         while True:
             yield [self.generate(loop.time() - start)]
-            await asyncio.sleep(1 / self.rate)
+            # Each update is due one interval after the last was due, so the
+            # time making and applying values takes doesn't lower the rate.
+            # Fallen far behind (a stall), it starts counting again from now.
+            due = max(due + 1 / self.rate, loop.time() - 1 / self.rate)
+            await asyncio.sleep(due - loop.time())
 
     def __repr__(self) -> str:
         return f"SimulatedSource(rate={self.rate})"

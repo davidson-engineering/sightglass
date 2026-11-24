@@ -18,10 +18,11 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass, field
-from time import monotonic
+from time import monotonic, perf_counter
 from typing import Any, Protocol, Self, TypeVar
 
 from .elements import JSON, Element, IndicatorLamp, TextElement
+from .history import History
 from .signals import Signals
 
 logger = logging.getLogger(__name__)
@@ -122,15 +123,26 @@ class Monitor:
     only what, something changed.
 
     :attr:`signals` keeps every accepted value by the id it was sent to, as
-    sent, with its last minute: the dashboard's signals panel.
+    sent, with its last minute: the dashboard's signals panel. With
+    ``history=seconds``, :attr:`history` keeps that long of every numeric
+    one, in 50 ms slots, for value-vs-time plots (``GET /history``); it is
+    None otherwise. Set it before the monitor starts.
     """
 
-    def __init__(self, *, strict: bool = False, max_elements: int = 500) -> None:
+    def __init__(
+        self,
+        *,
+        strict: bool = False,
+        max_elements: int = 500,
+        history: float | None = None,
+    ) -> None:
         self.strict = strict
         self.max_elements = max_elements
+        self.history = None if history is None else History(history)
         self.layout: list[Element | Group] = []
         self.version = 0
         self.layout_version = 0
+        self.accepted = 0  # values taken in, for measuring a feed's rate
         self.rejected = 0
         self.signals = Signals()
         self._elements: dict[str, Element] = {}
@@ -336,11 +348,14 @@ class Monitor:
                     changed.append(element.id)
                     accepted.append((key, value))
         if changed:
+            self.accepted += len(accepted)
             now = monotonic()
             for id in changed:
                 self._updated[id] = now
             self._mark_changed(changed)
             self.signals.record(accepted, now, self.version)
+            if self.history is not None:  # in finer time than monotonic()
+                self.history.record(accepted, perf_counter())
 
     def _apply(self, key: str, value: Any) -> Element | None:
         """Update the element ``key`` addresses; return it, or None if rejected."""

@@ -157,7 +157,9 @@ a colour name, or one of xterm's 256 colour numbers (`Style(fg=214)` is amber).
 
 For a fixed, curated dashboard use `Monitor(strict=True)`: unknown ids are
 then rejected and logged (once per id) instead of creating elements.
-`max_elements` (default 500) stops a noisy link creating elements without end.
+`max_elements` (default 500; `--max-elements` on the command line) stops a
+noisy link creating elements without end. Values for ids past it are dropped
+and logged, so raise it for a PLC with more variables than that.
 
 ## Running
 
@@ -349,6 +351,112 @@ as steps. Type to filter by id; `` ` `` or Escape closes it. It streams over a
 WebSocket of its own (`/ws/signals`) only while open.
 
 ![The signals panel over the launch demo: every id with its value and a chart of the last minute, from the end of the countdown through liftoff](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/signals-panel.png)
+
+#### History and value-vs-time plots
+
+To plot values against time over minutes, keep their history:
+`sightglass --history 600`, or `Monitor(history=600)` in Python. The dashboard
+then records every id that sends a number, as sent, in 50 ms slots for the
+last 600 seconds. `GET /history` returns any of those ids, reduced to the
+number of points a plot needs:
+
+```bash
+sightglass --history 600 &
+curl -d 'speed=3' http://127.0.0.1:8080/update
+curl 'http://127.0.0.1:8080/history?id=speed&seconds=60&points=600'
+```
+
+```json
+{"start": 1763900000.05, "step": 0.15, "points": 401, "signals": {"speed": [null, 3, [2.5, 4], 3]}}
+```
+
+The `signals` list shows four of the 401 points.
+
+- **Choose the ids:** repeat `id` for each one, up to 10,000 per request. `*`
+  matches any characters: `id=wave.*` is every id that starts `wave.`.
+- **Choose the window:** give `seconds` (the last that many, the whole history
+  by default), or `from` and `to` as Unix times.
+- **Choose the number of points:** `points` is the most you want, from 2 to
+  10000 (default 600); use the plot's width in pixels. You may get fewer, as
+  here, because each point covers a whole number of 50 ms slots, and because
+  one answer holds at most a million points in all (5000 ids get 200 each).
+  Or give `step`, in seconds per point, in place of `points`.
+
+Each point covers `step` seconds, starting at `start` (a Unix time). A point
+is the value, `[lowest, highest]` when it changed during the point, so a short
+spike still shows, or `null` where there was no number. Points start at
+multiples of `step`, so asking again for a window of the same length returns
+the same points plus any new ones. An id with no history is `null`.
+
+History costs 8 bytes per slot per id that sends numbers: 96 MB for 1000 ids
+over 10 minutes. Recording 1000 values 20 times a second takes about 2% of a
+CPU core. Reducing 10 minutes of one id takes about 1 ms. Values are kept as
+float32, about 7 significant digits, which is more than a plot can show.
+`GET /values` keeps the exact values.
+
+A page plots them without any JavaScript of its own: a `data-plot` element
+draws the ids it names over the last `data-seconds` seconds.
+
+```html
+<div data-plot="wave.* level" data-seconds="60" style="height: 400px"></div>
+<script src="/_sightglass/sightglass.js"></script>
+```
+
+Separate several ids or patterns with spaces. The lines and labels use the
+element's CSS `color` and `font`. The plot loads its window once, at about one
+point per pixel. It then asks only for points since its newest one, once per
+point and at most 20 times a second, and draws each point from its lowest to
+its highest value. While it can't get points, the element has
+`data-plot-error` with the reason, for example a dashboard without
+`--history`.
+
+`sightglass --demo plot --open` plots 100 waveforms sampled 20 times a second,
+each with an occasional spike one sample long. The last minute shows every
+sample. The last 10 minutes shows several samples per point, and every spike
+still shows.
+
+![The plot demo: 100 stacked waveforms over the last minute, each with short vertical spikes, and below them the last 10 minutes](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/plot-demo.png)
+
+For more ids than lines can show, `data-plot-mode="heatmap"` draws a row per
+id and a cell per point. A cell's strength is how far its value is from the
+id's usual value, in units of its usual spread: faint while a signal does
+what it usually does, full color with a mark where it goes four spreads or
+more from it. So a glitch, a step or a drift stands out among thousands of
+ordinary signals.
+
+#### How fast it is: the load demo
+
+`sightglass --demo load --open` reads a fake TwinCAT PLC, in a process of its
+own, over real ADS: 1000 REAL variables updated 20 times a second, read
+every 50 ms in sum reads of 500. The page shows a heat map of every signal
+over the last 10 minutes, ten of them as lines, and what it all costs,
+measured once a second inside the dashboard's process. 10 to 20 seconds in,
+and then every 40 to 80 seconds, one signal glitches for 100 ms; the log
+names it and the heat map marks it. It needs the ads extra
+(`pip install "sightglass[ads]"`), Linux or macOS, and port 48898 free. To
+change the load, run the demo as a module, with the Python that has
+sightglass installed:
+
+```bash
+python -m sightglass.load --signals 2000 --rate 50 --open
+```
+
+From a clone of this repository, put `uv run` in front: `uv run python -m
+sightglass.load ...`.
+
+![The load demo: readings of 20,749 values a second at 6% of a core, a heat map of 1000 signals with two glitches marked, ten signals as lines, and a log of the glitches](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/load-demo.png)
+
+Measured on an Apple M5 Pro (macOS 27, Python 3.14), with one page open:
+
+| Load | Values a second | CPU, one core | Worst event-loop delay | PLC to dashboard | Memory |
+| --- | --- | --- | --- | --- | --- |
+| 1000 signals at 20 Hz | 19,700 | 9–11% | 6 ms | 10 ms | 156 MB |
+| 2000 signals at 20 Hz | 40,000 | 10–13% | 3 ms | 12–14 ms | 249 MB |
+| 1000 signals at 50 Hz | 50,000 | 16–18% | 5 ms | 6–7 ms | 157 MB |
+| 5000 signals at 20 Hz | 98,000–103,000 | 22–23% | 6 ms | 19–21 ms | 555 MB |
+
+Memory is mostly history: 8 bytes per 50 ms slot per signal, kept for 10
+minutes. The fake PLC's own CPU isn't counted; a real PLC does that work.
 
 #### Themes
 

@@ -267,3 +267,49 @@ async def test_zmq_push_pull_keeps_messages_sent_before_the_monitor_starts(consu
 def test_zmq_rejects_unknown_patterns():
     with pytest.raises(ValueError, match="'sub' or 'pull'"):
         ZmqSource(pattern="pub")
+
+
+@pytest.mark.parametrize("tick", [0, 0.0156], ids=["fine clock", "15.6 ms clock"])
+async def test_simulated_source_keeps_its_rate_when_generating_takes_time(tick):
+    """Updates are spaced from one start to the next, so the time a value
+    takes to make (or to apply) doesn't slow the rate down. Also with
+    asyncio's clock as on Windows before Python 3.13 (monotonic(), which
+    ticks every 15.6 ms)."""
+    from sightglass import SimulatedSource
+
+    loop = asyncio.get_running_loop()
+    if tick:
+        fine = loop.time
+        loop.time = lambda: fine() // tick * tick
+
+    def slow(seconds):
+        time.sleep(0.004)  # a value that takes 4 ms to make
+        return {"t": seconds}
+
+    # The waits it asks for, not how long they take: a busy machine (a CI
+    # runner) oversleeps, which only shortens the next wait.
+    waits = []
+    real_sleep = asyncio.sleep
+
+    async def sleep(seconds):
+        waits.append(seconds)
+        await real_sleep(seconds)
+
+    source = SimulatedSource(slow, rate=100)
+    try:
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr("sightglass.sources.simulated.asyncio.sleep", sleep)
+            count = 0
+            async for _ in source.updates():
+                count += 1
+                if count == 20:
+                    break
+    finally:
+        if tick:
+            del loop.time  # back to the class's own
+    # Each value took at least 4 ms, so the waits average at most 6 ms of the
+    # 10 ms interval, give or take a tick of the clock at each end; waiting a
+    # full 10 ms after each value (lowering the rate) averages 10 ms. One
+    # wait can be off by a tick, so the test bounds the average.
+    assert len(waits) == 19
+    assert sum(waits) / len(waits) < 0.009

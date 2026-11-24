@@ -28,7 +28,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
-| Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page) |
+| Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 
 Choose `start()` when the dashboard should live and die with the program.
 Choose a separate `sightglass` process (fed by `Client`, curl or a pipe) when
@@ -103,6 +103,21 @@ pairs / `id value`. Nested JSON objects address groups: `{"job": {"progress":
 5}}` sets `job.progress`. `204` means accepted; `400` says what was wrong;
 `401` means the dashboard has a `--token` and the request didn't send
 `Authorization: Bearer <token>`.
+
+### Keeping history for value-vs-time plots
+
+```bash
+sightglass --history 600 &      # or Monitor(history=600): the last 10 minutes
+curl 'http://127.0.0.1:8080/history?id=speed&id=X.velocity&seconds=60&points=600'
+```
+
+Every id that sends a number is recorded in 50 ms slots (8 bytes per slot per
+id: 96 MB for 1000 ids over 10 minutes). The answer has `start` (a Unix time),
+`step` (seconds per point), `points`, and `signals`, a list of points for each
+id. Each point is a number, `[lowest, highest]`, or `null` for no number.
+Use `from`/`to` (Unix times) in place of `seconds` for a fixed window, and
+set `points` to the plot's width in pixels. `id=wave.*` names every id that
+starts `wave.`. To draw them on a page, see `data-plot` in section 5.
 
 ### Piping a program's output
 
@@ -190,6 +205,10 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 - **Linux and macOS:** the PLC needs a route to this machine. If it doesn't
   answer, the warning names the AMS net id and IP address to add.
 - **Windows:** needs TwinCAT's ADS router installed (XAE, XAR or TC1000).
+- **No PLC to hand:** `sightglass --demo load` reads a fake one over real
+  ADS (`sightglass.fake_plc`, on 127.0.0.1:48898, target `127.0.0.1.1.1`).
+- **More than 500 variables:** add `--max-elements 2000` (or
+  `Monitor(max_elements=2000)`); past the limit, values are dropped.
 - Warnings name every variable that couldn't be read and why (unknown name,
   undeclared struct type, size mismatch with the declaration); read them.
 
@@ -207,7 +226,8 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 - Floats that need more than 6 significant digits are shortened; use
   `TextFormat(precision=2)` for a fixed number of decimals.
 - `Monitor(strict=True)` rejects ids that weren't declared (logged once per
-  id); by default at most `max_elements=500` are created.
+  id); by default at most `max_elements=500` are created (`--max-elements`
+  on the command line). Ids past that are dropped, with a warning.
 
 | To show | Element | Update with |
 | --- | --- | --- |
@@ -239,6 +259,7 @@ route in this guide (one command each), plus a Docker deployment.
 <div data-bind="rate.values" data-mode="sparkline" style="height: 24px"></div>
 <div class="needle" data-bind="pressure.ratio" data-mode="var"></div>
 <span data-bind="wind" data-stale-after="3"></span>
+<div data-plot="wave.* level" data-seconds="60" style="height: 400px"></div>
 <script src="/_sightglass/sightglass.js"></script>
 ```
 
@@ -252,6 +273,12 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
   `--value` to the number (unset if it isn't one), e.g.
   `.needle { rotate: calc(var(--value) * 270deg - 135deg) }` for a `RangeBar`
   ratio, or `height: calc(var(--value) * 100%)` for a level.
+- **Plots against time:** `data-plot` names ids or patterns (space-separated,
+  `*` for any characters) and draws them over the last `data-seconds`, live,
+  in the element's CSS `color` and `font`. It needs the dashboard's history
+  (`--history`); without it the element gets `data-plot-error`.
+  `data-plot-mode="heatmap"` draws a row per id instead, marking where each
+  goes far from its usual value: for hundreds or thousands of ids.
 - **Several feeds:** `data-stale-after="3"` gives an element
   `data-stale="true"` while its value hasn't arrived for 3 s (or ever), so
   CSS can show which source went quiet, e.g.

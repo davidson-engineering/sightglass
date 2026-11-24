@@ -23,6 +23,10 @@
 // data-crt-switch the terminal theme's CRT effects; the choice is remembered in
 // this browser, and aria-pressed shows each switch's state.
 //
+// Plots: <div data-plot="wave.*" data-seconds="60"></div> draws those ids
+// against time from the dashboard's history (it needs --history). The code
+// (plot.js) loads only on pages that have one; see it for the details.
+//
 // The signals panel, for checking what a feed sends: every value the dashboard
 // has accepted, by id, as sent, with a chart of its last minute. The ` key
 // opens and closes it on any page; so does clicking an element marked
@@ -194,6 +198,7 @@
         staleAfter = message.staleAfter ?? null;
         document.dispatchEvent(new CustomEvent("monitor:snapshot", { detail: message }));
         collectBindings();
+        startPlots();
       }
       apply(message.values, message.ages);
     };
@@ -231,6 +236,14 @@
     showSwitches();
   });
 
+  let plotModule = null;
+  function startPlots() {
+    const plots = document.querySelectorAll("[data-plot]");
+    if (!plots.length) return;
+    plotModule ??= import("/_sightglass/plot.js");
+    plotModule.then((module) => plots.forEach(module.start));
+  }
+
   let signals = null; // the panel's module, once loaded
   const signalsPanel = () => (signals ??= import("/_sightglass/signals.js"));
 
@@ -250,6 +263,7 @@
 
   root.dataset.connection = "connecting";
   showSwitches();
+  startPlots();
   setInterval(tick, 1000);
   connect(250);
 })();
