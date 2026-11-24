@@ -94,6 +94,8 @@ class FakePlc(AbstractHandler):
                 self._next = -(-(offset + len(data)) // 8) * 8
             if data_type is None:
                 data_type = ADS_TYPES.get(type_name, constants.ADST_BIGTYPE)
+            if offset + len(data) > len(self.memory):  # room for the program
+                self.memory.extend(bytes(offset + len(data) - len(self.memory)))
             self.memory[offset : offset + len(data)] = data
             self.symbols[name.upper()] = Symbol(
                 name, offset, len(data), data_type, type_name, listed
@@ -208,15 +210,43 @@ class FakePlc(AbstractHandler):
 
 
 class _Connection(AdsClientConnection):
-    """One client's connection, dropped if the client resets it. pyads' own
-    expects a clean close, but a client stopped mid-conversation (the CLI at
-    the end of a test) can reset it instead."""
+    """One client's connection. pyads' own reads at most 4096 bytes and takes
+    them for a whole request, so a bigger one (a sum read of more than about
+    340 variables) is cut off and never answered; this reads each request
+    whole, by the length in its AMS/TCP header. It also drops a client that
+    resets the connection, where pyads' expects a clean close (the CLI
+    stopped at the end of a test does that)."""
 
     def run(self) -> None:
+        self._run = True
         try:
-            super().run()
+            while self._run:
+                ready, _, _ = select.select([self.client], [], [], 0.1)
+                if not ready:
+                    continue
+                header = self._receive(6)  # reserved (2 bytes), length (4)
+                if header is None:
+                    break
+                body = self._receive(struct.unpack_from("<I", header, 2)[0])
+                if body is None:
+                    break
+                request = self.construct_request(header + body)
+                response = self.handler.handle_request(request)
+                self.client.sendall(self.construct_response(response, request))
         except ConnectionError:
-            self.client.close()
+            pass
+        self.client.close()
+        self._run = False
+
+    def _receive(self, size: int) -> bytes | None:
+        """Exactly ``size`` bytes, or None once the client has gone."""
+        data = bytearray()
+        while len(data) < size:
+            chunk = self.client.recv(size - len(data))
+            if not chunk:
+                return None
+            data.extend(chunk)
+        return bytes(data)
 
 
 class _Server(AdsTestServer):
