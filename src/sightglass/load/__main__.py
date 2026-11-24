@@ -4,6 +4,7 @@ load of your choosing (``sightglass --demo load`` runs 1000 at 20 Hz)."""
 import argparse
 import sys
 
+from ..cli import error_message
 from . import RATE, SIGNALS, run
 
 parser = argparse.ArgumentParser(
@@ -22,4 +23,4 @@ args = parser.parse_args()
 try:
     run(signals=args.signals, rate=args.rate, port=args.port, open_browser=args.open)
 except (ImportError, OSError, ValueError) as error:
-    sys.exit(f"sightglass: error: {error}")
+    sys.exit(error_message(error, args.port))

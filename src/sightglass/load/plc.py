@@ -97,7 +97,10 @@ def main(signals: int, rate: float) -> None:
     program = Program(plc, signals)
     program.update()  # values from the first read on, not zeros
     server = FakePlcServer(plc)
-    server.start()
+    try:
+        server.start()
+    except OSError:  # port 48898 taken: the dashboard says so, in one line
+        sys.exit(1)
     print("ready", flush=True)
     parent = os.getppid()
     try:

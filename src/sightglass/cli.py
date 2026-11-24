@@ -376,13 +376,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             monitor, sources, outputs = build(args)
             monitor.serve(sources=sources, outputs=outputs)
     except (ImportError, OSError, ValueError) as error:
-        message = error.strerror if isinstance(error, OSError) else None
-        message = message or str(error)
-        if "already in use" in message:
-            message += f", e.g. --port {args.port + 1}"
-        print(f"sightglass: error: {message}", file=sys.stderr)
+        print(error_message(error, args.port), file=sys.stderr)
         return 1
     return 0
+
+
+def error_message(error: Exception, port: int) -> str:
+    """A setup error as one line, with a free port to try if ``port`` is taken."""
+    message = error.strerror if isinstance(error, OSError) else None
+    message = message or str(error)
+    if "already in use" in message:
+        message += f", e.g. --port {port + 1}"
+    return f"sightglass: error: {message}"
 
 
 if __name__ == "__main__":

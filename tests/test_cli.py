@@ -288,6 +288,28 @@ def test_busy_port_is_explained_for_the_command_line():
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="pyads needs TwinCAT on Windows")
+def test_busy_port_is_explained_for_the_load_demo_too():
+    """python -m sightglass.load says what sightglass does, port hint included."""
+    process, url = run_cli()
+    try:
+        port = int(url.rsplit(":", 1)[1].strip("/"))
+        result = subprocess.run(
+            [sys.executable, "-m", "sightglass.load", "--port", str(port)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    finally:
+        stop(process)
+    assert result.returncode == 1
+    assert result.stderr == (
+        f"sightglass: error: port {port} is already in use (is another dashboard "
+        f"running?); choose a different port, e.g. --port {port + 1}\n"
+    )
+
+
 def test_no_input_note_when_stdin_is_empty():
     process, _ = run_cli()  # stdin is /dev/null, as under nohup or a service
     time.sleep(0.3)
