@@ -28,7 +28,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
-| Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots) |
+| Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 
 Choose `start()` when the dashboard should live and die with the program.
 Choose a separate `sightglass` process (fed by `Client`, curl or a pipe) when
@@ -205,6 +205,8 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 - **Linux and macOS:** the PLC needs a route to this machine. If it doesn't
   answer, the warning names the AMS net id and IP address to add.
 - **Windows:** needs TwinCAT's ADS router installed (XAE, XAR or TC1000).
+- **No PLC to hand:** `sightglass --demo load` reads a fake one over real
+  ADS (`sightglass.fake_plc`, on 127.0.0.1:48898, target `127.0.0.1.1.1`).
 - **More than 500 variables:** add `--max-elements 2000` (or
   `Monitor(max_elements=2000)`); past the limit, values are dropped.
 - Warnings name every variable that couldn't be read and why (unknown name,
@@ -275,6 +277,8 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
   `*` for any characters) and draws them over the last `data-seconds`, live,
   in the element's CSS `color` and `font`. It needs the dashboard's history
   (`--history`); without it the element gets `data-plot-error`.
+  `data-plot-mode="heatmap"` draws a row per id instead, marking where each
+  goes far from its usual value: for hundreds or thousands of ids.
 - **Several feeds:** `data-stale-after="3"` gives an element
   `data-stale="true"` while its value hasn't arrived for 3 s (or ever), so
   CSS can show which source went quiet, e.g.

@@ -1,8 +1,9 @@
 """Take the README's screenshots of the launch demo: its page in both themes,
-its signals panel, and its terminal screen; then of the plot demo.
+its signals panel, and its terminal screen; then of the plot and load demos.
 
-    uv run --all-extras python docs/screenshot.py         # all of them, ~3 min
+    uv run --all-extras python docs/screenshot.py         # all of them, ~5 min
     uv run --all-extras python docs/screenshot.py plot    # the plot demo, ~70 s
+    uv run --all-extras python docs/screenshot.py load    # the load demo, ~100 s
 
 Runs `sightglass --demo launch --terminal` from the start of its countdown in
 a 120 x 36 pseudo-terminal, as someone trying it would (on port 8080, as the
@@ -173,9 +174,45 @@ def plot() -> None:
     print("Saved plot-demo.png")
 
 
+def load() -> None:
+    """`sightglass --demo load` 90 s in, a glitch or two on its heat map:
+    load-demo.png. Needs port 48898 free (no other fake PLC or ADS router)."""
+    demo = subprocess.Popen(
+        [sys.executable, "-m", "sightglass", "--demo", "load", "--port", "0"],
+        stdin=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+    try:
+        url = demo.stderr.readline().split()[1]  # "Dashboard: <url>"
+        time.sleep(90)
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page(
+                viewport={"width": 1440, "height": 1240}, device_scale_factor=2
+            )
+            page.goto(url)
+            page.locator(
+                '[data-plot-mode="heatmap"][data-plot-signals="1000"]'
+            ).wait_for()
+            page.wait_for_timeout(2500)  # the readings, a second or two of them
+            shot = DOCS / "load-demo.png"
+            page.screenshot(path=shot, full_page=True)
+            Image.open(shot).convert("RGB").quantize(256).save(shot, optimize=True)
+            browser.close()
+    finally:
+        demo.terminate()
+        demo.communicate(timeout=10)
+    print("Saved load-demo.png")
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["plot"]:
         plot()
+    elif sys.argv[1:] == ["load"]:
+        load()
     else:
         main()
         plot()
+        load()

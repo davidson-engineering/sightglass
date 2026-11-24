@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Load test: a PLC over ADS</title>
+  <script src="/_sightglass/theme.js"></script>
+  <link rel="stylesheet" href="/_sightglass/terminal.css">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --ink: #1d2733;
+      --muted: #5b6878;
+      --line: #1f5fa8;
+      --heat: #c2410c;
+      --paper: #f6f7f9;
+      --card: #ffffff;
+      --rule: #d9dee5;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #e3e8ee;
+        --muted: #98a4b3;
+        --line: #7cb4f5;
+        --heat: #fb923c;
+        --paper: #111418;
+        --card: #181c21;
+        --rule: #2a3038;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px 24px;
+      margin-bottom: 16px;
+    }
+    h1 { margin: 0; font-size: 22px; font-weight: 600; }
+    h1 span, .note, .unit, header p { color: var(--muted); font-weight: 400; }
+    header p { margin: 4px 0 0; max-width: 80ch; }
+    .switches { display: flex; gap: 8px; }
+    .switch {
+      font: inherit;
+      font-size: 13px;
+      padding: 4px 10px;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .switch[aria-pressed="true"] { border-color: var(--line); color: var(--line); }
+    html:not([data-theme="terminal"]) [data-crt-switch] { display: none; }
+
+    .meters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin: 0 0 16px;
+      padding: 0;
+      list-style: none;
+    }
+    .meters li, section {
+      background: var(--card);
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+    }
+    .meters li { padding: 10px 14px 12px; min-width: 0; }
+    .meters h2 { margin: 0 0 2px; font-size: 13px; font-weight: 500; color: var(--muted); }
+    .reading { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .unit { font-size: 14px; margin-left: 2px; }
+    .meters p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+    .trend { height: 22px; margin-top: 4px; color: var(--line); }
+
+    section { padding: 14px 16px 10px; margin-bottom: 16px; min-width: 0; }
+    section h2 {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      align-items: baseline;
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    section h2 .note { font-size: 13px; }
+    .heat { height: 46vh; min-height: 320px; color: var(--heat); font: 12px system-ui, sans-serif; }
+    .pair { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    .lines { height: 260px; color: var(--line); font: 12px system-ui, sans-serif; }
+    .events { margin: 0; font: 13px/1.6 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+    .events:empty::before { content: "No glitch yet: the first comes within 20 s."; color: var(--muted); }
+    [data-plot-error] { color: var(--muted); }
+
+    html[data-theme="terminal"] body {
+      background: var(--crt-bg);
+      color: var(--crt-fg);
+      font-family: var(--crt-font);
+      font-size: 20px;
+    }
+    html[data-theme="terminal"] h1 { font-size: 30px; font-weight: 400; color: var(--crt-bright); }
+    html[data-theme="terminal"] section h2 { font-size: 22px; font-weight: 400; color: var(--crt-bright); }
+    html[data-theme="terminal"] section h2 .note { font-size: 18px; }
+    html[data-theme="terminal"] h1 span,
+    html[data-theme="terminal"] .note,
+    html[data-theme="terminal"] .unit,
+    html[data-theme="terminal"] header p,
+    html[data-theme="terminal"] .meters h2,
+    html[data-theme="terminal"] .meters p { color: var(--crt-dim); }
+    html[data-theme="terminal"] .meters h2 { font-size: 18px; font-weight: 400; }
+    html[data-theme="terminal"] .meters p { font-size: 16px; }
+    html[data-theme="terminal"] .meters li,
+    html[data-theme="terminal"] section {
+      background: var(--crt-surface);
+      border-color: var(--crt-rule);
+      border-radius: 0;
+    }
+    html[data-theme="terminal"] .reading {
+      font: 32px var(--crt-readout-font);
+      color: var(--crt-bright);
+    }
+    html[data-theme="terminal"] .unit { font: 18px var(--crt-font); }
+    html[data-theme="terminal"] .switch {
+      font: 18px var(--crt-font);
+      color: var(--crt-dim);
+      background: var(--crt-raised);
+      border-color: var(--crt-rule);
+      border-radius: 0;
+    }
+    html[data-theme="terminal"] .switch[aria-pressed="true"] {
+      color: var(--crt-bright);
+      border-color: var(--crt-fg);
+    }
+    html[data-theme="terminal"] .trend,
+    html[data-theme="terminal"] .lines,
+    html[data-theme="terminal"] .heat { color: var(--crt-fg); font: 18px var(--crt-font); }
+    html[data-theme="terminal"] .heat { color: var(--crt-amber); }
+    html[data-theme="terminal"] .events { font: 18px/1.5 var(--crt-font); }
+
+    @media (max-width: 760px) {
+      main { padding: 14px; }
+      .pair { grid-template-columns: 1fr; }
+      .meters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .reading { font-size: 22px; }
+    }
+  </style>
+</head>
+<!--
+  Plain HTML. The readings are values the dashboard measures in its own
+  process and sends to itself (the Meter source in __init__.py); the heat map
+  and the lines are data-plot elements, drawn from the dashboard's history.
+-->
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Load test <span><span data-bind="load.signals"></span> PLC signals at
+          <span data-bind="load.rate"></span> Hz, read over ADS</span></h1>
+        <p>A fake TwinCAT PLC in its own process updates every signal
+          <span data-bind="load.rate"></span> times a second; the dashboard reads
+          them all over real ADS and keeps 10 minutes of history. Every reading below is measured once a second inside the
+          dashboard's process.</p>
+      </div>
+      <div class="switches">
+        <button type="button" class="switch" data-theme-switch>Terminal</button>
+        <button type="button" class="switch" data-crt-switch>CRT</button>
+      </div>
+    </header>
+
+    <ul class="meters">
+      <li>
+        <h2>Values taken in</h2>
+        <span class="reading" data-bind="load.values"></span><span class="unit">/s</span>
+        <p><span data-bind="load.reads"></span> reads of every signal a second</p>
+      </li>
+      <li>
+        <h2>CPU, whole dashboard</h2>
+        <span class="reading" data-bind="load.cpu.text"></span><span class="unit">% of a core</span>
+        <div class="trend" data-bind="load.cpu.values" data-mode="sparkline"></div>
+      </li>
+      <li>
+        <h2>Event loop, worst delay</h2>
+        <span class="reading" data-bind="load.loop.text"></span><span class="unit">ms</span>
+        <div class="trend" data-bind="load.loop.values" data-mode="sparkline"></div>
+      </li>
+      <li>
+        <h2>PLC to dashboard</h2>
+        <span class="reading" data-bind="load.delay"></span><span class="unit">ms</span>
+        <p>from the PLC's update to the value applied</p>
+      </li>
+      <li>
+        <h2>History</h2>
+        <span class="reading" data-bind="load.history"></span><span class="unit">MB</span>
+        <p>peak memory <span data-bind="load.memory"></span> MB; a page's first
+          10 minutes add about 70 MB while they're sent</p>
+      </li>
+      <li>
+        <h2>Reduce 10 min of a signal</h2>
+        <span class="reading" data-bind="load.query"></span><span class="unit">ms</span>
+        <p>to 600 points, lowest and highest each</p>
+      </li>
+    </ul>
+
+    <section aria-labelledby="every">
+      <h2 id="every">Every signal, last 10 minutes <span class="note">a row each:
+        faint while a signal does what it usually does, marked where it goes far
+        from that</span></h2>
+      <div class="heat" data-plot="GVL.fSignal*" data-plot-mode="heatmap" data-seconds="600"></div>
+    </section>
+
+    <div class="pair">
+      <section aria-labelledby="ten">
+        <h2 id="ten">Ten of them, last minute <span class="note">GVL.fSignal0000 to 0009</span></h2>
+        <div class="lines" data-plot="GVL.fSignal000*" data-seconds="60"></div>
+      </section>
+      <section aria-labelledby="log">
+        <h2 id="log">Glitches <span class="note"><span data-bind="load.glitches"></span></span></h2>
+        <pre class="events" data-bind="load.events"></pre>
+      </section>
+    </div>
+  </main>
+  <script src="/_sightglass/sightglass.js"></script>
+</body>
+</html>

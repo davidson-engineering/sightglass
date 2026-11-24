@@ -535,3 +535,33 @@ async def test_plot_demo_page_comes_alive(page):
         process.terminate()
         await asyncio.wait_for(process.communicate(), 10)
 
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pyads needs TwinCAT on Windows")
+async def test_load_demo_reads_a_plc_and_measures_itself(page):
+    """sightglass --demo load: the fake PLC's 1000 signals arrive over ADS,
+    the heat map draws them all, and the readings are measured."""
+    process = await asyncio.create_subprocess_exec(
+        *[sys.executable, "-m", "sightglass", "--demo", "load", "--port", "0"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+    try:
+        line = (await asyncio.wait_for(process.stderr.readline(), 20)).decode()
+        assert line.startswith("Dashboard: "), line
+        url = line.split()[1]
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else 0)
+        await page.goto(url)
+        heat = page.locator('[data-plot-mode="heatmap"]')
+        signals = expect(heat).to_have_attribute
+        await signals("data-plot-signals", "1000", timeout=10_000)
+        await expect(page.locator('[data-bind="load.signals"]')).to_have_text("1000")
+        reading = page.locator('.reading[data-bind="load.values"]')
+        await expect(reading).to_have_text(re.compile(r"^\d{4,}$"), timeout=5_000)
+        assert not errors
+    finally:
+        process.terminate()
+        await asyncio.wait_for(process.communicate(), 15)

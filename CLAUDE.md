@@ -21,6 +21,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run sightglass --demo               # see the generic page with every element type
 uv run sightglass --demo launch --open  # the showcase (README screenshot); python -m sightglass.launch --at 60 starts mid-flight
 uv run sightglass --demo plot --open    # 100 waveforms at 20 Hz on value-vs-time plots (data-plot)
+uv run sightglass --demo load --open    # a fake PLC's 1000 signals over real ADS, measured; python -m sightglass.load --signals 5000 for more
 uv run python examples/robot_dashboard/dashboard.py --simulate   # the segment-display panel
 uv run --all-extras python docs/screenshot.py   # retake the README screenshots (~3 min; `plot` for just the plot demo's)
 ```
@@ -29,7 +30,7 @@ uv run --all-extras python docs/screenshot.py   # retake the README screenshots 
 
 | Path | What |
 | --- | --- |
-| `src/sightglass/monitor.py` | `Monitor`: element registry, id routing, auto-created elements, change versions, thread-safe updates, `start`/`serve`/`run`/`stop` |
+| `src/sightglass/monitor.py` | `Monitor`: element registry, id routing, auto-created elements, change versions, `accepted`/`rejected` counts, thread-safe updates, `start`/`serve`/`run`/`stop` |
 | `src/sightglass/elements.py` | element types; each has `update`, `to_json` (browser) and `render(width)` (terminal) |
 | `src/sightglass/history.py` | `Monitor.history` (`history=seconds`, `--history`): every numeric id's recent values in 50 ms slots (float32 lowest and highest, carried forward), reduced per query to points aligned on multiples of their step; `Track`, the slot ring the signals panel shares; standard library only |
 | `src/sightglass/signals.py` | `Monitor.signals`: every accepted value by the id it was sent to, as sent, with its last minute in time slots shared by all ids (each slot its lowest and highest value); what the signals panel shows; standard library only |
@@ -41,6 +42,8 @@ uv run --all-extras python docs/screenshot.py   # retake the README screenshots 
 | `src/sightglass/client.py` | stdlib-only HTTP client for other processes |
 | `src/sightglass/cli.py`, `demo.py` | the `sightglass` command and `--demo` data |
 | `src/sightglass/launch/` | `--demo launch`, the showcase: `page.html` + `static/` (plain HTML/CSS), `screen.py` (its terminal screen, `--terminal`), `vehicle.py` (flight model, in-process source), `ground.py` and `weather.py` (feeder processes), `mission.py` (shared clock); loaded only by that demo |
+| `src/sightglass/load/` | `--demo load`: `plc.py` (the fake PLC's program, its own process, exits with its parent), `__init__.py` (`Meter`: a source measuring the dashboard it runs in), `page.html` (readings, heat map, lines, glitch log); loaded only by that demo |
+| `src/sightglass/fake_plc.py` | a fake TwinCAT PLC on pyads' test server (127.0.0.1:48898): memory, symbol table, symbol version, whole AMS frames; for `tests/test_ads.py` and the load demo |
 | `src/sightglass/plot/` | `--demo plot`: `page.html` (two `data-plot`s) and 100 simulated waves with spikes; loaded only by that demo |
 | `src/sightglass/GUIDE.md` | the agent guide (imported above, printed by `--guide`) |
 | `examples/` | the gallery (`examples/README.md`): robot dashboard (segment displays, serial), numbered single-file examples, terminal, ZeroMQ publisher, Docker, `fake_device.py` (virtual serial port), `plc.toml` (a commented ADS interface file) |
@@ -84,7 +87,7 @@ uv run --all-extras python docs/screenshot.py   # retake the README screenshots 
   runs after them.
 - `filterwarnings = error`: close every socket, pipe, file and HTTP error
   response, or the test fails.
-- ADS tests (`tests/test_ads.py`) talk real ADS to `tests/fake_plc.py`, a fake
+- ADS tests (`tests/test_ads.py`) talk real ADS to `sightglass/fake_plc.py`, a fake
   PLC (memory, symbol table, symbol version) behind pyads' test server on
   127.0.0.1:48898, which must be free. They skip on Windows, where pyads
   needs TwinCAT's router.

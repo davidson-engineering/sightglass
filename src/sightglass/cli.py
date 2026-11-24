@@ -48,6 +48,7 @@ examples:
   sightglass --demo launch --open       the showcase: a rocket launch, live
   sightglass --demo launch --terminal   ... drawn in the terminal too
   sightglass --demo plot --open         100 waveforms at 20 Hz, plotted against time
+  sightglass --demo load --open         a fake PLC's 1000 signals over ADS, measured
 """
 
 
@@ -118,11 +119,13 @@ def parser() -> argparse.ArgumentParser:
         "--demo",
         nargs="?",
         const="elements",
-        choices=["elements", "launch", "plot"],
-        metavar="launch|plot",
+        choices=["elements", "launch", "plot", "load"],
+        metavar="launch|plot|load",
         help="show simulated data: every kind of element on the generic page; "
         "with 'launch', a rocket launch on a hand-built page, fed by three "
-        "programs; with 'plot', 100 waveforms at 20 Hz on value-vs-time plots",
+        "programs; with 'plot', 100 waveforms at 20 Hz on value-vs-time plots; "
+        "with 'load', 1000 signals of a fake PLC read over ADS at 20 Hz, and what "
+        "that costs (needs the ads extra)",
     )
 
     display = p.add_argument_group("display")
@@ -259,6 +262,14 @@ def plot(args: argparse.Namespace) -> None:
     run(host=args.host, port=args.port, open_browser=args.open, theme=args.theme)
 
 
+def load(args: argparse.Namespace) -> None:
+    """The load demo: a fake PLC read over ADS, until Ctrl+C."""
+    _own_page_demo(args, terminal=False)
+    from .load import run
+
+    run(host=args.host, port=args.port, open_browser=args.open, theme=args.theme)
+
+
 def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
     """Refuse options that a demo with its own page and data would ignore."""
     ignored = {
@@ -359,6 +370,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             launch(args)
         elif args.demo == "plot":
             plot(args)
+        elif args.demo == "load":
+            load(args)
         else:
             monitor, sources, outputs = build(args)
             monitor.serve(sources=sources, outputs=outputs)

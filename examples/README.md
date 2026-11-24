@@ -53,6 +53,21 @@ release yet (0.2.0 is the latest); from a clone of this repository, run
 sightglass --demo plot --open
 ```
 
+## How fast it is: a fake PLC under load
+
+A fake TwinCAT PLC, in a process of its own, updates 1000 signals 20 times a
+second; the dashboard reads them all over real ADS and shows what that costs,
+measured as it runs: values a second, CPU, the event loop's worst delay, the
+delay from PLC to dashboard, memory. A heat map shows every signal over the
+last 10 minutes and marks the rare glitch. Needs the ads extra, Linux or
+macOS; like the plot demo, it isn't released yet (from a clone:
+`uv run --all-extras sightglass --demo load --open`).
+
+```bash
+sightglass --demo load --open
+python -m sightglass.load --signals 5000 --rate 20 --open   # more load
+```
+
 ## 1. Hello, dashboard
 
 A Python program reports what it's doing with `start()` and `set()`. Nothing

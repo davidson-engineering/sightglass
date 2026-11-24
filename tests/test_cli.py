@@ -100,6 +100,7 @@ def test_build_reads_piped_stdin(monkeypatch):
         (["--demo", "launch", "--history", "60"], "drop --history"),
         (["--demo", "plot", "--terminal"], "--demo plot has its own page and data"),
         (["--demo", "plot", "--serial", "auto"], "drop --serial"),
+        (["--demo", "load", "--terminal"], "--demo load has its own page and data"),
         (["--history", "0"], "seconds must be a positive number"),
         (["--max-elements", "0"], "--max-elements must be at least 1"),
         (["--vars", "MAIN.*"], "--vars and --allow-writes go with --ads"),
