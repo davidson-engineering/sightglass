@@ -469,9 +469,9 @@ HEAT_ROWS = """el => {
 
 
 async def test_heatmap_gives_each_id_a_row_where_a_spike_stands_out(page, serve):
-    """A row per id, each scaled to its own range: a wave that swings fills
-    half its row at full strength; a steady one with one spike, only the
-    spike."""
+    """A row per id, each cell as far as its value is from the id's usual one:
+    a wave that keeps swinging, or ramps, stays faint; a steady value's one
+    spike is at full strength."""
     monitor = Monitor(history=60)
     plot = (
         '<div id="heat" data-plot="a b c" data-plot-mode="heatmap"'
@@ -479,15 +479,28 @@ async def test_heatmap_gives_each_id_a_row_where_a_spike_stands_out(page, serve)
         ' color: rgb(0, 0, 255)"></div>'
     )
     url = serve(plot, monitor)
-    for k in range(30):  # 1.5 s at 20 Hz
-        monitor.update({"a": 1 + k % 2, "b": 50 if k == 15 else 1, "c": k})
-        await asyncio.sleep(0.05)
-    await page.goto(url)
-    await expect(page.locator("#heat")).to_have_attribute("data-plot-signals", "3")
-    swing, spike, ramp = await page.locator("#heat").evaluate(HEAT_ROWS)
-    assert swing["strong"] > 5 * spike["strong"] > 0
-    assert spike["drawn"] > 10 * spike["strong"]  # the rest of its row is faint
-    assert ramp["strong"] > 0
+    sent = 0
+
+    async def feed():  # live, 20 times a second, as a PLC would be
+        nonlocal sent
+        while True:
+            k = sent
+            monitor.update({"a": 1 + k % 2, "b": 50 if k == 30 else 1, "c": k})
+            sent += 1
+            await asyncio.sleep(0.05)
+
+    feeding = asyncio.create_task(feed())
+    try:
+        await page.goto(url)
+        await expect(page.locator("#heat")).to_have_attribute("data-plot-signals", "3")
+        await until(lambda: sent >= 50, within=5)  # the spike, then more
+        await page.wait_for_timeout(200)  # drawn with the latest points
+        swing, spike, ramp = await page.locator("#heat").evaluate(HEAT_ROWS)
+    finally:
+        feeding.cancel()
+    assert spike["strong"] > 0
+    assert swing["strong"] == ramp["strong"] == 0, (swing, spike, ramp)
+    assert swing["drawn"] > 10 * spike["strong"]  # faint, but there
 
 
 async def test_plot_says_why_it_has_nothing_without_history(page, serve):
@@ -521,3 +534,4 @@ async def test_plot_demo_page_comes_alive(page):
     finally:
         process.terminate()
         await asyncio.wait_for(process.communicate(), 10)
+

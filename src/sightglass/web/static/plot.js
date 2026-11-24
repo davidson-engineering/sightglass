@@ -14,11 +14,16 @@
 // from the dashboard's clock, so a viewer's wrong clock doesn't matter.
 //
 // With data-plot-mode="heatmap" it draws one row per id instead, a cell per
-// point, for more ids than lines can show (a whole PLC, say). Each row is
-// scaled to its own lowest and highest value in view, from faint to the
-// element's full color; a point that spans two values shows the one further
-// from the middle of its row, so a spike either way stands out. With more
-// ids than pixel rows, each pixel shows the strongest of the cells it covers.
+// point, for more ids than lines can show (a whole PLC, say), to find the
+// ones doing something unusual. A cell's strength is how far its value is
+// from its id's usual value (the median in view), in units of the id's usual
+// spread (the mean distance from that): faint up to two spreads, the
+// element's full color at four or more, where the cell also gets a mark at
+// least 7 px tall, so a glitch one cell wide can't be missed. A steady wave
+// stays faint, and a glitch, a step or a drift shows, up or down; a point
+// that spans two values shows the one further away. With more ids than pixel
+// rows, each pixel shows the strongest of the cells it covers. Lines show
+// the values.
 //
 // The element gets data-plot-signals (how many ids it draws) and
 // data-plot-range (the lowest and highest value in view) once points arrive,
@@ -27,6 +32,12 @@
 const MIN_INTERVAL = 50; // ms between requests at most: 20 a second
 const RETRY = 1000; // ms after a failed request
 const TICKS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]; // s
+// A heat map cell's strength, by how many spreads its value is from usual:
+// faint up to USUAL (a wave's peaks are about 1.6), then rising to full
+// color at FULL, where it also gets a mark big enough to see.
+const USUAL = 2;
+const FULL = 4;
+const MARKS = 400; // at most, the strongest first
 
 const running = new WeakSet();
 
@@ -243,27 +254,21 @@ function drawHeat(g, plot, from, seconds, width, lines, ratio, color) {
   const [red, green, blue] = rgb(color);
   const image = new ImageData(columns, rows);
   const cells = image.data;
+  const marks = []; // [spreads away, row, column] of cells at full color
   for (let s = 0; s < all.length; s++) {
     const series = all[s];
-    let low = Infinity;
-    let high = -Infinity;
-    for (const point of series) {
-      if (point == null) continue;
-      const [a, b] = Array.isArray(point) ? point : [point, point];
-      if (a < low) low = a;
-      if (b > high) high = b;
-    }
-    if (low === Infinity) continue;
-    const span = high - low || 1;
-    const middle = (high + low) / 2;
+    const usual = typical(series);
+    if (usual === null) continue;
+    const [middle, spread] = usual;
     const row = Math.floor((s * rows) / all.length);
     for (let i = 0; i < series.length; i++) {
       const point = series[i];
       const column = offset + i;
       if (point == null || column < 0 || column >= columns) continue;
       const [a, b] = Array.isArray(point) ? point : [point, point];
-      const value = Math.abs(b - middle) >= Math.abs(a - middle) ? b : a;
-      const alpha = Math.round(255 * (0.08 + (0.92 * (value - low)) / span));
+      const away = Math.max(Math.abs(a - middle), Math.abs(b - middle)) / spread;
+      const alpha = Math.round(255 * strength(away));
+      if (away >= FULL) marks.push([away, row, column]);
       const at = (row * columns + column) * 4;
       if (alpha <= cells[at + 3]) continue; // the strongest cell wins the pixel
       cells[at] = red;
@@ -280,7 +285,66 @@ function drawHeat(g, plot, from, seconds, width, lines, ratio, color) {
   g.globalAlpha = 1;
   g.imageSmoothingEnabled = false; // crisp cells, a spike stays one cell
   g.drawImage(plot.bitmap, 0, 0, width, lines);
+  // Marks over the cells at full color, outlined in the page's background
+  // (the canvas is transparent, so the element's own background shows).
+  const cellWidth = width / columns;
+  const cellHeight = lines / rows;
+  const markWidth = Math.max(cellWidth, 3);
+  const markHeight = Math.max(cellHeight, 7);
+  marks.sort((x, y) => y[0] - x[0]);
+  g.lineWidth = 1.5;
+  g.strokeStyle = background(plot.el);
+  for (const [, row, column] of marks.slice(0, MARKS)) {
+    const x = column * cellWidth + cellWidth / 2 - markWidth / 2;
+    const y = Math.min(
+      Math.max(row * cellHeight + cellHeight / 2 - markHeight / 2, 0),
+      lines - markHeight,
+    );
+    g.strokeRect(x, y, markWidth, markHeight);
+    g.fillRect(x, y, markWidth, markHeight);
+  }
   g.restore();
+}
+
+// A cell's opacity, 0 to 1, for a value ``away`` spreads from usual.
+function strength(away) {
+  if (away < USUAL) return 0.03 + (0.09 * away) / USUAL;
+  return 0.12 + 0.88 * Math.min((away - USUAL) / (FULL - USUAL), 1);
+}
+
+// The color behind an element: its own background, or its nearest
+// ancestor's that has one; white if none does.
+function background(el) {
+  for (let node = el; node; node = node.parentElement) {
+    const color = getComputedStyle(node).backgroundColor;
+    if (rgb(color).length && !/rgba\(.*,\s*0\)$|transparent/.test(color)) return color;
+  }
+  return "white";
+}
+
+// A series' usual value and spread: the median of the values its points
+// reach (both ends of a point that spans two), and their mean distance from
+// it (not the median distance, which is 0 for a signal that is at one of
+// two values over half the time; never 0, so any change from a steady value
+// shows at full strength). Null for no numbers.
+function typical(series) {
+  const reached = [];
+  for (const point of series) {
+    if (point == null) continue;
+    if (Array.isArray(point)) reached.push(point[0], point[1]);
+    else reached.push(point);
+  }
+  if (!reached.length) return null;
+  const median = (values) => {
+    values.sort((x, y) => x - y);
+    const half = values.length >> 1;
+    return values.length % 2 ? values[half] : (values[half - 1] + values[half]) / 2;
+  };
+  const middle = median(reached);
+  let spread = 0;
+  for (const value of reached) spread += Math.abs(value - middle);
+  spread /= reached.length;
+  return [middle, spread || Math.abs(middle) * 1e-9 || 1e-12];
 }
 
 // A CSS color as [red, green, blue], whatever form getComputedStyle gives.
