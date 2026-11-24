@@ -3,7 +3,7 @@
 import asyncio
 import math
 import time
-from time import monotonic
+from time import perf_counter
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -12,7 +12,7 @@ from sightglass import Monitor, WebDashboard
 from sightglass.history import History
 
 RES = 0.05
-T = 1000.0  # a monotonic() time at the start of a slot
+T = 1000.0  # a perf_counter() time at the start of a slot
 
 
 def at(slot: int) -> float:
@@ -140,7 +140,7 @@ def test_a_monitor_keeps_history_only_when_asked():
     monitor = Monitor(history=60)
     monitor.update({"speed": 4, "job.rate": 2})
     assert monitor.history.seconds == 60
-    now = monotonic()
+    now = perf_counter()  # the history's clock
     result = monitor.history.query(["speed", "job.rate"], now - 1, now, points=2)
     assert result["signals"]["speed"][-1] == 4
     assert result["signals"]["job.rate"][-1] == 2
@@ -152,7 +152,7 @@ def test_a_monitor_records_values_as_sent_not_as_shown():
     monitor = Monitor(history=60)
     monitor.add(ProgressBar("job", total=50))
     monitor.update({"job": 25})  # shown as 50%
-    now = monotonic()
+    now = perf_counter()  # the history's clock
     assert monitor.history.query(["job"], now - 1, now, 2)["signals"]["job"][-1] == 25
 
 
@@ -247,6 +247,11 @@ async def test_a_long_query_lets_values_keep_arriving(client, monkeypatch):
     """Ids are reduced a few milliseconds' worth at a time, handing the event
     loop back in between, so a big request doesn't hold up incoming values
     (or other pages)."""
+    # monotonic() as on Windows before Python 3.13, which ticks every 15.6 ms
+    # and can't time a 2 ms slice: the handler mustn't depend on it.
+    monkeypatch.setattr(
+        "sightglass.web.monotonic", lambda: time.monotonic() // 0.0156 * 0.0156
+    )
     history = client.monitor.history
     events = []
     trace = history.trace
@@ -281,9 +286,15 @@ async def test_get_history_expands_a_pattern_to_the_ids_it_matches(client):
     assert list(result["signals"]) == ["wave.1", "wave.2", "wave.10"]  # as first sent
 
 
-async def test_get_history_takes_a_step_so_a_plot_can_fetch_just_new_points(client):
+async def test_get_history_takes_a_step_so_a_plot_can_fetch_just_new_points(
+    client, monkeypatch
+):
     """A plot asks once for its window, then again from its newest point at
     the same step: the points line up, and the first one is redone."""
+    # The wall clock as on Windows before Python 3.13: it ticks every 15.6 ms,
+    # so each answer's start (a Unix time) is off by up to a third of a step.
+    wall = time.time
+    monkeypatch.setattr("sightglass.web.time.time", lambda: wall() // 0.0156 * 0.0156)
     client.monitor.update({"speed": 3})
     whole = await (
         await client.get("/history", params={"id": "speed", "seconds": "6"})
@@ -294,8 +305,8 @@ async def test_get_history_takes_a_step_so_a_plot_can_fetch_just_new_points(clie
     new = await (await client.get("/history", params=params)).json()
     assert new["step"] == whole["step"]
     offset = (new["start"] - whole["start"]) / whole["step"]
-    # Within microseconds: the wall clock and monotonic() drift apart a little.
-    assert offset == pytest.approx(round(offset), abs=1e-3)
+    # A plot rounds this to whole points: right while it's within half of one.
+    assert offset == pytest.approx(round(offset), abs=0.35)
     assert new["signals"]["speed"][-1] in (9, [3, 9])
 
 

@@ -18,7 +18,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass, field
-from time import monotonic
+from time import monotonic, perf_counter
 from typing import Any, Protocol, Self, TypeVar
 
 from .elements import JSON, Element, IndicatorLamp, TextElement
@@ -354,8 +354,8 @@ class Monitor:
                 self._updated[id] = now
             self._mark_changed(changed)
             self.signals.record(accepted, now, self.version)
-            if self.history is not None:
-                self.history.record(accepted, now)
+            if self.history is not None:  # in finer time than monotonic()
+                self.history.record(accepted, perf_counter())
 
     def _apply(self, key: str, value: Any) -> Element | None:
         """Update the element ``key`` addresses; return it, or None if rejected."""

@@ -43,7 +43,7 @@ import time
 import webbrowser
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from time import monotonic
+from time import monotonic, perf_counter
 from typing import Any
 
 from aiohttp import WSCloseCode, WSMsgType, web
@@ -302,9 +302,10 @@ class WebDashboard:
                 raise ValueError(
                     f"at most {HISTORY_MAX_IDS} ids per request; these match {len(ids)}"
                 )
-            # Slots are kept in monotonic() time; the page plots wall-clock time.
-            offset = time.time() - monotonic()
-            end = min(end - offset, monotonic())  # no points for what hasn't happened
+            # Slots are kept in perf_counter() time; the page plots wall-clock
+            # time.
+            offset = time.time() - perf_counter()
+            end = min(end - offset, perf_counter())  # nothing that hasn't happened
             start = min(start - offset, end)
             if points is not None and ids:
                 points = max(min(points, HISTORY_POINT_BUDGET // len(ids)), 2)
@@ -325,12 +326,14 @@ class WebDashboard:
         # values arrive in between: encoding a whole answer at once (16 MB for
         # 1000 busy ids over 10 minutes) held the loop for 190 ms.
         parts = []
-        sliced = monotonic()
+        # perf_counter(), not monotonic(): on Windows before Python 3.13 that
+        # ticks every 15.6 ms, so it can't time a 2 ms slice.
+        sliced = perf_counter()
         for id in ids:
             parts.append(f"{json.dumps(id)}:{json.dumps(history.trace(id, window))}")
-            if monotonic() - sliced > HISTORY_SLICE:
+            if perf_counter() - sliced > HISTORY_SLICE:
                 await asyncio.sleep(0)
-                sliced = monotonic()
+                sliced = perf_counter()
         head = history.describe(window)
         head["start"] += offset
         body = f'{json.dumps(head)[:-1]}, "signals": {{{", ".join(parts)}}}}}'

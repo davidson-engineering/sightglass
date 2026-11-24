@@ -157,7 +157,7 @@ def _query_ms(monitor: Monitor) -> float:
     history = monitor.history
     if history is None or "GVL.fSignal0000" not in history:
         return 0.0
-    now = time.monotonic()
+    now = time.perf_counter()  # the history's clock
     started = time.perf_counter()
     history.query(["GVL.fSignal0000"], now - HISTORY, now, 600)
     return (time.perf_counter() - started) * 1000

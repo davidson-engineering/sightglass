@@ -14,6 +14,9 @@ pixel however long the window is. Points cover whole multiples of their
 step, so the same window length always gives the same points and a live plot
 can append new ones to those it has.
 
+Times are ``time.perf_counter()``, not ``monotonic()``: on Windows before
+Python 3.13, ``monotonic()`` ticks every 15.6 ms, too coarse for 50 ms slots.
+
 Memory: 8 bytes per slot per signal that has sent a number (two float32s),
 e.g. 96 MB for 1000 signals at 20 slots a second for 10 minutes. float32 holds
 about 7 significant digits, more than a plot can show; exact values are in
@@ -194,11 +197,11 @@ class History:
         return id in self._tracks
 
     def slot_at(self, now: float) -> int:
-        """The slot that ``now`` (a ``monotonic()`` time) falls in."""
+        """The slot that ``now`` (a ``perf_counter()`` time) falls in."""
         return math.floor(now / self.resolution)
 
     def record(self, values: Iterable[tuple[str, Any]], now: float) -> None:
-        """Record ``(id, value)`` pairs that arrived at ``now`` (``monotonic()``)."""
+        """Record ``(id, value)`` pairs that arrived at ``now`` (``perf_counter()``)."""
         slot = self.slot_at(now)
         tracks = self._tracks
         for id, value in values:
@@ -233,7 +236,7 @@ class History:
         *,
         step: float | None = None,
     ) -> Window:
-        """The slots from ``start`` to ``end`` (``monotonic()`` times), in at
+        """The slots from ``start`` to ``end`` (``perf_counter()`` times), in at
         most ``points`` points, or in points of ``step`` seconds (rounded to
         whole slots), e.g. the ``step`` an earlier query returned."""
         if end < start:
@@ -257,7 +260,7 @@ class History:
         return track.points(window.first, window.last, window.step)
 
     def describe(self, window: Window) -> dict[str, Any]:
-        """``window`` as sent with its points: ``start``, the ``monotonic()``
+        """``window`` as sent with its points: ``start``, the ``perf_counter()``
         time the first point begins (at or before the one asked for);
         ``step``, seconds per point; ``points``, how many."""
         return {
@@ -269,7 +272,7 @@ class History:
     def query(
         self, ids: Iterable[str], start: float, end: float, points: int
     ) -> dict[str, Any]:
-        """``ids`` from ``start`` to ``end`` (``monotonic()`` times) in at most
+        """``ids`` from ``start`` to ``end`` (``perf_counter()`` times) in at most
         ``points`` points: :meth:`describe` of the window, and ``signals``,
         each id's points (None if it has no history).
 
