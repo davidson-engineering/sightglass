@@ -68,6 +68,15 @@ def test_theme_option_reaches_both_kinds_of_page(monkeypatch):
     assert launched["theme"] == "terminal"
 
 
+def test_max_elements_lets_a_big_plc_show_every_variable(monkeypatch):
+    monkeypatch.setattr("sys.stdin", Terminal())
+    monitor, _, _ = build(args("--max-elements", "2000", "--history", "60"))
+    assert monitor.max_elements == 2000
+    monitor.update({f"GVL.f{i}": i for i in range(1500)})
+    assert len(monitor.signals) == 1500
+    assert build(args())[0].max_elements == 500  # the default
+
+
 def test_ads_names_split_on_commas_outside_array_indexes():
     from sightglass.cli import split_names
 
@@ -92,6 +101,7 @@ def test_build_reads_piped_stdin(monkeypatch):
         (["--demo", "plot", "--terminal"], "--demo plot has its own page and data"),
         (["--demo", "plot", "--serial", "auto"], "drop --serial"),
         (["--history", "0"], "seconds must be a positive number"),
+        (["--max-elements", "0"], "--max-elements must be at least 1"),
         (["--vars", "MAIN.*"], "--vars and --allow-writes go with --ads"),
         (["--ads", "5.1.2.3.1.1"], "--ads needs --vars naming what to show"),
         (

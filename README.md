@@ -157,7 +157,9 @@ a colour name, or one of xterm's 256 colour numbers (`Style(fg=214)` is amber).
 
 For a fixed, curated dashboard use `Monitor(strict=True)`: unknown ids are
 then rejected and logged (once per id) instead of creating elements.
-`max_elements` (default 500) stops a noisy link creating elements without end.
+`max_elements` (default 500; `--max-elements` on the command line) stops a
+noisy link creating elements without end. Values for ids past it are dropped
+and logged, so raise it for a PLC with more variables than that.
 
 ## Running
 

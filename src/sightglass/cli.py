@@ -150,6 +150,14 @@ def parser() -> argparse.ArgumentParser:
         help="dim values when no data has arrived for this long",
     )
     display.add_argument(
+        "--max-elements",
+        type=int,
+        default=500,
+        metavar="N",
+        help="the most ids that get a display of their own (default: 500); "
+        "raise it for a PLC with more variables",
+    )
+    display.add_argument(
         "--history",
         type=float,
         metavar="SECONDS",
@@ -175,6 +183,9 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
         sources.append(demo.source())
     else:
         monitor = Monitor()
+    if args.max_elements < 1:
+        raise ValueError("--max-elements must be at least 1")
+    monitor.max_elements = args.max_elements
     if args.history is not None:
         monitor.history = History(args.history)
 
@@ -264,6 +275,7 @@ def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
         "--token": args.token,
         "--stale-after": args.stale_after,
         "--history": args.history is not None,
+        "--max-elements": args.max_elements != 500,
         "--terminal": args.terminal and not terminal,
     }
     if given := [flag for flag, value in ignored.items() if value]:
