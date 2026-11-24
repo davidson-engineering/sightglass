@@ -278,12 +278,24 @@ async def test_simulated_source_keeps_its_rate_when_generating_takes_time():
         time.sleep(0.004)  # a value that takes 4 ms to make
         return {"t": seconds}
 
+    # The waits it asks for, not how long they take: a busy machine (a CI
+    # runner) oversleeps, which only shortens the next wait.
+    waits = []
+    real_sleep = asyncio.sleep
+
+    async def sleep(seconds):
+        waits.append(seconds)
+        await real_sleep(seconds)
+
     source = SimulatedSource(slow, rate=100)
-    started = time.perf_counter()
-    count = 0
-    async for _ in source.updates():
-        count += 1
-        if count == 50:
-            break
-    # 49 intervals of 10 ms; waiting 10 ms after each 4 ms would take 0.69 s.
-    assert time.perf_counter() - started < 0.6
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("sightglass.sources.simulated.asyncio.sleep", sleep)
+        count = 0
+        async for _ in source.updates():
+            count += 1
+            if count == 20:
+                break
+    # Each value took at least 4 ms, so the wait to the next is at most 6 ms
+    # of the 10 ms interval (a full 10 ms after each value lowers the rate).
+    assert len(waits) == 19
+    assert max(waits) <= 0.0065
