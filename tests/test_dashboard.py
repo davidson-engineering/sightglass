@@ -1,5 +1,6 @@
 """Dashboards described by a config file: sightglass --config."""
 
+import re
 import urllib.request
 
 import pytest
@@ -130,7 +131,7 @@ def test_environment_variables_fill_in_a_source_so_secrets_stay_out_of_the_file(
         ),
         (MINIMAL.replace("[[source]]", "[[source]]\ninterval = -1"), "interval"),
         ("history = 10\n" + MINIMAL, "history is 10 s but a panel plots 300 s"),
-        ("title = 5\n" + MINIMAL, "title must be text"),
+        ("title = 5\n" + MINIMAL, "title and version must be text"),
     ],
 )
 def test_a_bad_config_says_what_is_wrong_in_one_line(tmp_path, text, message):
@@ -153,6 +154,24 @@ def test_the_page_has_a_card_per_panel_with_a_plot_per_range(tmp_path):
     assert 'class="plot range-1 last"' in page  # the shortest is the biggest
     assert "/_sightglass/dashboard.css" in page and "sightglass.js" in page
     assert "top to bottom" in page and "5 minutes" in page and "1 minute" in page
+
+
+def test_the_page_says_which_instance_it_is(tmp_path):
+    from sightglass import __version__
+
+    path = write(tmp_path, 'title = "Plant"\nversion = "2.1 <beta>"\n' + MINIMAL)
+    dashboard = load(path)
+    assert dashboard.config == "dashboard.toml" and dashboard.version == "2.1 <beta>"
+    assert re.fullmatch(r"[0-9a-f]{8}", dashboard.digest)
+    page = dashboard.page()
+    identity = re.search(r'<small class="identity">(.*?)</small>', page).group(1)
+    assert identity.startswith("v2.1 &lt;beta&gt; \u00b7 dashboard.toml \u00b7 config ")
+    assert f"sightglass {__version__}" in identity
+    assert re.search(r"started \d{4}-\d\d-\d\d \d\d:\d\d$", identity)
+    # the fingerprint tells two instances with different files apart
+    other = write(tmp_path, 'title = "Plant"\n' + MINIMAL)
+    assert load(other).digest != dashboard.digest
+    assert "v2.1" not in load(other).page()  # no version, none shown
 
 
 def test_the_legend_is_left_out_when_panels_plot_different_ranges(tmp_path):

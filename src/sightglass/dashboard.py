@@ -25,17 +25,27 @@ only; the sources it builds need their extras (``rest`` needs aiohttp).
 
 from __future__ import annotations
 
+import hashlib
 import html
 import os
 import re
 import tomllib
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .monitor import Source
 
-TOP_KEYS = {"title", "history", "max_elements", "card_width", "source", "panel"}
+TOP_KEYS = {
+    "title",
+    "version",
+    "history",
+    "max_elements",
+    "card_width",
+    "source",
+    "panel",
+}
 SOURCE_TYPES = ("rest",)
 REST_KEYS = {
     "type",
@@ -74,6 +84,10 @@ class Dashboard:
     card_width: int
     sources: list[Source] = field(default_factory=list)
     panels: list[Panel] = field(default_factory=list)
+    version: str = ""  # the dashboard's own, from the file
+    config: str = ""  # the file's name
+    digest: str = ""  # a short fingerprint of the file's text: it changes when it does
+    started: str = ""  # when this instance was loaded
 
     def page(self) -> str:
         return render(self)
@@ -83,7 +97,8 @@ def load(path: str | Path) -> Dashboard:
     """Read a config file. Raises :class:`ValueError` with a one-line reason for
     anything wrong with it.
 
-    Top level: ``title``, ``history`` (seconds of values to keep for plots;
+    Top level: ``title``, ``version`` (a label for this dashboard's own version,
+    shown beside the title), ``history`` (seconds of values to keep for plots;
     default: the longest range and a minute), ``max_elements`` (default 2000),
     ``card_width`` (least pixels wide a card is; default 520).
 
@@ -99,14 +114,19 @@ def load(path: str | Path) -> Dashboard:
     with ``{name}`` in the title and ids replaced by it.
     """
     path = Path(path)
+    raw = path.read_bytes()
     try:
-        data = tomllib.loads(path.read_text("utf-8"))
+        data = tomllib.loads(raw.decode("utf-8"))
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
     try:
-        return _build(data)
+        dashboard = _build(data)
     except ValueError as error:
         raise ValueError(f"{path}: {error}") from None
+    dashboard.config = path.name
+    dashboard.digest = hashlib.sha256(raw).hexdigest()[:8]
+    dashboard.started = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return dashboard
 
 
 def _build(data: dict[str, Any]) -> Dashboard:
@@ -126,9 +146,12 @@ def _build(data: dict[str, Any]) -> Dashboard:
     max_elements = int(_number(data, "max_elements", 2000, "the config"))
     card_width = int(_number(data, "card_width", 520, "the config"))
     title = data.get("title", "Dashboard")
-    if not isinstance(title, str):
-        raise ValueError("title must be text")
-    return Dashboard(title, history, max_elements, card_width, sources, panels)
+    version = data.get("version", "")
+    if not isinstance(title, str) or not isinstance(version, str | int | float):
+        raise ValueError("title and version must be text")
+    return Dashboard(
+        title, history, max_elements, card_width, sources, panels, version=str(version)
+    )
 
 
 def _tables(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
@@ -275,7 +298,17 @@ def span(seconds: float) -> str:
 def render(dashboard: Dashboard) -> str:
     """The page: a card per panel, plain HTML that sightglass.js and plot.js
     draw into, in the style of ``dashboard.css``."""
+    from . import __version__
+
     title = html.escape(dashboard.title)
+    identity = [
+        f"v{dashboard.version}" if dashboard.version else "",
+        dashboard.config,
+        f"config {dashboard.digest}" if dashboard.digest else "",
+        f"sightglass {__version__}",
+        f"started {dashboard.started}" if dashboard.started else "",
+    ]
+    meta = html.escape(" · ".join(part for part in identity if part))
     shared = {panel.ranges for panel in dashboard.panels}
     key = ""
     if len(shared) == 1:  # a legend only when every panel plots the same ranges
@@ -314,6 +347,7 @@ def render(dashboard: Dashboard) -> str:
 <body>
   <header>
     <h1>{title}</h1>
+    <small class="identity">{meta}</small>
     {key}
   </header>
   <div class="grid" style="--card-width: {dashboard.card_width}px">
