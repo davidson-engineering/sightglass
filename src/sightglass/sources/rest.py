@@ -44,10 +44,17 @@ class RestSource:
     """Polls JSON endpoints with GET and feeds their values to the monitor.
 
     Nested objects become dotted ids, like :class:`~sightglass.JsonDecoder`;
-    numbers, text and booleans are shown, and ``null`` and empty lists are
+    numbers, text and booleans are shown, and empty lists and objects are
     skipped. Each endpoint is polled on its own schedule, so a slow one doesn't
     delay the others. A failing endpoint is logged once when it goes down and
     once when it returns, and polled as usual meanwhile.
+
+    ``null`` means invalid data, and invalid data is never left showing: an id
+    that was valid and is now ``null``, missing from the reply, or from an
+    endpoint that can't be reached, is blanked, so text shows nothing and a
+    plot shows a gap, until a value returns. An id that has never been valid
+    gets no display at all. (Bars and sparklines can't take a blank: they keep
+    their last value, and ``data-stale-after`` can dim them.)
 
     ``endpoints`` are URLs or :class:`Endpoint` objects. ``headers`` go with
     every request (``{"Authorization": "Bearer ..."}``, an API key). Requests
@@ -106,20 +113,25 @@ class RestSource:
         loop = asyncio.get_running_loop()
         every = endpoint.interval or self.interval
         down = False
+        showing: set[str] = set()  # the ids with a valid value on display
         due = loop.time()
         while True:
             try:
-                update = await self._fetch(session, endpoint)
+                reply = await self._fetch(session, endpoint)
             except _Failed as failure:
                 if not down:
                     logger.warning("%s: %s; will keep trying", endpoint.url, failure)
                 down = True
+                reply = {}
             else:
                 if down:
                     logger.info("%s is answering again", endpoint.url)
                 down = False
-                if update:
-                    queue.put_nowait(update)
+            valid = {id: value for id, value in reply.items() if value is not None}
+            update = {**valid, **dict.fromkeys(showing - valid.keys(), BLANK)}
+            showing = set(valid)
+            if update:
+                queue.put_nowait(update)
             # Due one interval after the last was due, so a slow reply doesn't
             # lower the rate; after a long stall, start counting from now.
             due = max(due + every, loop.time())
@@ -152,8 +164,12 @@ class _Failed(Exception):
     """A poll that produced no values; the message says why."""
 
 
+BLANK = ""  # shows as nothing, and is a gap, not a number, in a plot
+
+
 def extract(document: Any, endpoint: Endpoint) -> Update:
-    """The ``{id: value}`` an endpoint's JSON document stands for."""
+    """The ``{id: value}`` an endpoint's JSON document stands for; ``null`` is
+    None, for invalid data."""
     for part in filter(None, endpoint.select.split(".")):
         if isinstance(document, Mapping) and part in document:
             document = document[part]
@@ -177,7 +193,7 @@ def _flatten(node: Any, path: str, key: str, out: dict[str, Any]) -> None:
             (_item_name(item, key, index), item) for index, item in enumerate(node)
         )
     else:
-        if path and isinstance(node, str | int | float | bool):
+        if path and (node is None or isinstance(node, str | int | float | bool)):
             out[path] = node
         return
     for name, value in children:

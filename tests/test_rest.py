@@ -3,6 +3,7 @@
 import importlib.util
 import logging
 from pathlib import Path
+from time import perf_counter
 
 import pytest
 from aiohttp import web
@@ -30,7 +31,7 @@ METRICS = {
 async def api():
     """A server with a metrics page, a health page that answers 503, and a
     page that is down until ``state["up"]``."""
-    state = {"up": False, "hits": 0, "headers": None}
+    state = {"up": False, "hits": 0, "headers": None, "live": {}}
 
     async def metrics(request):
         state["hits"] += 1
@@ -45,6 +46,11 @@ async def api():
             return web.Response(status=500)
         return web.json_response({"data": {"level": 3}})
 
+    async def live(request):
+        if state["live"] is None:  # the service is down
+            return web.Response(status=503)
+        return web.json_response(state["live"])
+
     async def junk(request):
         return web.Response(text="<html>")
 
@@ -53,6 +59,7 @@ async def api():
     app.router.add_get("/health", health)
     app.router.add_get("/flaky", flaky)
     app.router.add_get("/junk", junk)
+    app.router.add_get("/live", live)
     server = TestServer(app)
     await server.start_server()
     server.state = state
@@ -142,6 +149,54 @@ async def test_select_that_is_missing_is_a_failure_not_a_crash(api, consume, cap
     assert len(monitor) == 0
 
 
+def plotted(monitor, id):
+    """The last few points a plot of ``id`` would draw."""
+    window = monitor.history.window(perf_counter() - 0.6, perf_counter(), 12)
+    return monitor.history.trace(id, window)[-3:]
+
+
+async def test_null_is_invalid_so_the_value_is_blanked_not_left_showing(api, consume):
+    monitor = Monitor(history=60)
+    api.state["live"] = {"a": 1.5, "b": 2, "never": None}
+    consume(monitor, RestSource(Endpoint(url(api, "/live"), prefix="p"), interval=0.05))
+    await until(lambda: "p.a" in monitor and "p.b" in monitor)
+    assert "p.never" not in monitor  # never valid: no display at all
+
+    api.state["live"] = {"a": None, "b": 3, "never": None}
+    await until(lambda: monitor["p.a"].value == "")  # blank, not 1.5
+    await until(lambda: monitor["p.b"].value == 3)  # the others carry on
+    await until(lambda: plotted(monitor, "p.a") == [None] * 3)  # a gap, no line
+    assert isinstance(plotted(monitor, "p.b")[-1], float | int)
+    assert "p.never" not in monitor
+
+    api.state["live"] = {"a": 4, "b": 3}
+    await until(lambda: monitor["p.a"].value == 4)  # valid again
+
+
+async def test_an_id_missing_from_the_reply_is_blanked(api, consume):
+    monitor = Monitor()
+    api.state["live"] = {"a": 1, "b": 2}
+    consume(monitor, RestSource(Endpoint(url(api, "/live"), prefix="p"), interval=0.05))
+    await until(lambda: "p.b" in monitor)
+    api.state["live"] = {"a": 1}
+    await until(lambda: monitor["p.b"].value == "")
+    assert monitor["p.a"].value == 1
+
+
+async def test_an_unreachable_service_blanks_everything_it_showed(api, consume):
+    monitor = Monitor(history=60)
+    api.state["live"] = {"a": 1.5, "b": {"c": 2}}
+    consume(monitor, RestSource(Endpoint(url(api, "/live"), prefix="p"), interval=0.05))
+    await until(lambda: "p.b.c" in monitor)
+
+    api.state["live"] = None  # the service goes down
+    await until(lambda: monitor["p.a"].value == "" and monitor["p.b.c"].value == "")
+    await until(lambda: plotted(monitor, "p.a") == [None] * 3)
+
+    api.state["live"] = {"a": 1.5, "b": {"c": 2}}  # and comes back
+    await until(lambda: monitor["p.a"].value == 1.5 and monitor["p.b.c"].value == 2)
+
+
 def test_extract_names_and_types():
     update = extract(
         {"a": {"b": True, "c": [1, 2]}, "d": [], "e": {}, "f": "text"},
@@ -149,6 +204,11 @@ def test_extract_names_and_types():
     )
     assert update == {"p.a.b": True, "p.a.c.0": 1, "p.a.c.1": 2, "p.f": "text"}
     assert extract(5, Endpoint("http://x")) == {}  # a bare value has no id
+    assert extract({"a": None, "b": [None, 1]}, Endpoint("http://x")) == {
+        "a": None,  # null is invalid data, kept so it can be blanked
+        "b.0": None,
+        "b.1": 1,
+    }
 
 
 def test_validation():
