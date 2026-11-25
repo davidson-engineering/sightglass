@@ -9,7 +9,7 @@ creates its display. Print this guide from any project with
 ## 1. Install
 
 ```bash
-pip install "sightglass[web]"     # add serial / zmq / ads extras as needed, or [all]
+pip install "sightglass[web]"     # add serial / zmq / ads / rest extras as needed, or [all]
 ```
 
 Python 3.11+. The package has no required dependencies; `[web]` adds
@@ -27,6 +27,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A microcontroller on a serial port | `sightglass --serial auto --csv a,b,c` (or `--json`, `--binary`) |
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
+| A REST API that answers GET with JSON | `sightglass --rest http://host:8000/metrics` (repeat `--rest`; `--rest-interval`, `--rest-header 'X-Api-Key: ...'`), or `RestSource("http://host/metrics", interval=2)`; needs `[rest]` |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
 | Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 

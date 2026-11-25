@@ -5,6 +5,7 @@ sightglass                                  # then: curl -d 'temp=21.5' .../upda
 sightglass --serial auto --csv temp,humidity
 sightglass --zmq tcp://localhost:5556
 sightglass --ads 5.12.34.56.1.1 --vars 'MAIN.*'
+sightglass --rest http://localhost:8000/metrics
 sightglass --demo
 """
 
@@ -44,6 +45,10 @@ examples:
   sightglass --ads 5.12.34.56.1.1 --vars 'MAIN.*,GVL.fTemperature'
                                         a Beckhoff PLC over ADS
   sightglass --ads plc.toml             the PLC, variables and types in a file
+  sightglass --rest http://localhost:8000/metrics --rest-interval 2
+                                        poll a JSON REST endpoint (repeat --rest
+                                        for more); ids start with its last path
+                                        segment: metrics.process.memory_mb
   sightglass --demo                     simulated data, every kind of element
   sightglass --demo launch --open       the showcase: a rocket launch, live
   sightglass --demo launch --terminal   ... drawn in the terminal too
@@ -114,6 +119,27 @@ def parser() -> argparse.ArgumentParser:
         help="with an --ads interface file: write values sent to variables marked "
         f"write = true to the PLC (needs --token, and {WRITES_ENV}=1 in the "
         "environment)",
+    )
+    inputs.add_argument(
+        "--rest",
+        metavar="URL",
+        action="append",
+        help="poll a URL that answers GET with JSON; repeat for several. Ids are "
+        "the JSON's names, dotted, after the URL's last path segment",
+    )
+    inputs.add_argument(
+        "--rest-interval",
+        type=float,
+        default=1.0,
+        metavar="SECONDS",
+        help="with --rest: time between polls (default: 1)",
+    )
+    inputs.add_argument(
+        "--rest-header",
+        metavar="'NAME: VALUE'",
+        action="append",
+        help="with --rest: send this header with every request, e.g. an API key "
+        "(repeatable)",
     )
     inputs.add_argument(
         "--demo",
@@ -213,6 +239,11 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
     elif args.vars or args.allow_writes:
         raise ValueError("--vars and --allow-writes go with --ads")
 
+    if args.rest:
+        sources.append(rest_source(args))
+    elif args.rest_header or args.rest_interval != 1.0:
+        raise ValueError("--rest-interval and --rest-header go with --rest")
+
     if sys.stdin is not None and not sys.stdin.isatty() and not args.demo:
         stdin = StdinSource(echo=not args.terminal)
         stdin.on_end = lambda: _input_ended(stdin)
@@ -280,6 +311,7 @@ def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
         "--zmq": args.zmq,
         "--pull": args.pull,
         "--ads": args.ads,
+        "--rest": args.rest,
         "--vars": args.vars,
         "--allow-writes": args.allow_writes,
         "--title": args.title != "Monitor",
@@ -308,6 +340,27 @@ def _input_ended(stdin: StdinSource) -> None:
         file=sys.stderr,
         flush=True,
     )
+
+
+def rest_source(args: argparse.Namespace) -> Source:
+    from urllib.parse import urlsplit
+
+    from . import Endpoint, RestSource
+
+    headers = {}
+    for header in args.rest_header or []:
+        name, sep, value = header.partition(":")
+        if not sep or not name.strip():
+            raise ValueError(f"--rest-header wants 'NAME: VALUE', not {header!r}")
+        headers[name.strip()] = value.strip()
+    endpoints = []
+    for url in args.rest:
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            raise ValueError(f"--rest wants an http:// or https:// URL, not {url!r}")
+        prefix = parts.path.rstrip("/").rpartition("/")[2]
+        endpoints.append(Endpoint(url, prefix=prefix))
+    return RestSource(*endpoints, interval=args.rest_interval, headers=headers)
 
 
 def ads_source(args: argparse.Namespace) -> Source:

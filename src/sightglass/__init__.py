@@ -8,9 +8,10 @@ Quickest start, from inside a program::
     monitor.set("progress", 0.5)       # from any thread; elements appear as used
 
 A :class:`Monitor` holds elements (text, bars, lamps, charts, tables, ...).
-Sources (serial, ZeroMQ, PLCs over ADS, stdin, simulated) and HTTP posts feed it updates
-keyed by element id, and outputs (web dashboard, terminal) display it. Other
-programs can send values with :class:`~sightglass.client.Client`, or with
+Sources (serial, ZeroMQ, PLCs over ADS, REST APIs, stdin, simulated) and HTTP
+posts feed it updates keyed by element id, and outputs (web dashboard,
+terminal) display it. Other programs can send values with
+:class:`~sightglass.client.Client`, or with
 ``curl -d 'progress=5' http://127.0.0.1:8080/update``.
 """
 
@@ -47,6 +48,7 @@ from .terminal import TerminalDisplay
 
 if TYPE_CHECKING:
     from .sources.ads import AdsSource
+    from .sources.rest import Endpoint, RestSource
     from .sources.serialport import SerialSource, find_serial_port
     from .sources.zeromq import ZmqSource
     from .web import WebDashboard
@@ -56,6 +58,8 @@ __version__ = "0.2.0"
 # Classes that need an optional dependency are imported on first use.
 _OPTIONAL = {
     "AdsSource": (".sources.ads", "ads"),
+    "Endpoint": (".sources.rest", "rest"),
+    "RestSource": (".sources.rest", "rest"),
     "SerialSource": (".sources.serialport", "serial"),
     "find_serial_port": (".sources.serialport", "serial"),
     "ZmqSource": (".sources.zeromq", "zmq"),
@@ -87,6 +91,7 @@ __all__ = [
     "DecodeError",
     "Decoder",
     "Element",
+    "Endpoint",
     "Group",
     "IndicatorLamp",
     "JsonDecoder",
@@ -98,6 +103,7 @@ __all__ = [
     "Output",
     "ProgressBar",
     "RangeBar",
+    "RestSource",
     "SerialSource",
     "SimulatedSource",
     "Source",
