@@ -30,18 +30,23 @@
     header { display: flex; align-items: baseline; gap: 2vw; }
     h1 { margin: 0; font-size: clamp(22px, 2.8vmin, 60px); font-weight: 700; letter-spacing: 0.01em; }
     header span { color: #94a3b8; font-size: clamp(16px, 1.9vmin, 40px); }
-    /* Three columns, two rows: together they fill the screen. */
+    header b { font-weight: 700; }
+    /* Cards wrap like Grafana's panels: each is at least --card-width wide, so
+       the number per row follows the screen's width, and the cards of the last
+       row grow to share what is left. Rows share the height equally. */
     .grid {
+      --card-width: 520px;
       flex: 1;
       min-height: 0;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(2, 1fr);
+      display: flex;
+      flex-wrap: wrap;
       gap: 1vmin;
+      overflow-y: auto;           /* only if the cards can't fit at their least height */
     }
-    section, aside {
+    section {
+      flex: 1 1 var(--card-width);
       min-width: 0;
-      min-height: 0;
+      min-height: 180px;   /* rows share the rest of the height equally */
       display: flex;
       flex-direction: column;
       gap: 0.6vmin;
@@ -51,13 +56,12 @@
       border-radius: 8px;
     }
     h2 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-height: 1.1; letter-spacing: 0.01em; }
-    /* The long range is short; the 1 minute plot gets most of the card. */
-    .plot { min-height: 0; font-size: clamp(14px, 1.9vmin, 40px); font-family: var(--font-plot); }
-    .long  { flex: 2; color: #4fd1ff; }
-    .lines { flex: 3; color: #ffd166; }
+    /* The long range is short; the 1 minute plot gets most of the card. A zero
+       base keeps a plot's canvas from setting its row's height. */
+    .plot { min-height: 0; overflow: hidden; font-size: clamp(14px, 1.9vmin, 40px); font-family: var(--font-plot); }
+    .long  { flex: 2 1 0px; color: #4fd1ff; }
+    .lines { flex: 3 1 0px; color: #ffd166; }
     .plot[data-plot-error] { color: #f87171; }
-    aside { justify-content: center; font-size: clamp(16px, 2.1vmin, 44px); line-height: 1.45; color: #cbd5e1; }
-    aside b { color: #f1f5f9; }
     .key-long { color: #4fd1ff; }
     .key-lines { color: #ffd166; }
   </style>
@@ -70,7 +74,7 @@
 <body>
   <header>
     <h1>Sensor grids</h1>
-    <span>updated live</span>
+    <span><b class="key-long">Top: last 5 minutes</b> &nbsp;&middot;&nbsp; <b class="key-lines">Bottom: last minute</b></span>
   </header>
   <div class="grid">
     <section>
@@ -98,11 +102,6 @@
       <div class="plot long" data-plot="grid.Roof.value.0.*" data-seconds="300"></div>
       <div class="plot lines" data-plot="grid.Roof.value.0.*" data-seconds="60"></div>
     </section>
-    <aside>
-      <div><b class="key-long">Top: last 5 minutes</b></div>
-      <div><b class="key-lines">Bottom: last minute</b></div>
-      <div>readings of the first row of cells</div>
-    </aside>
   </div>
   <script src="/_sightglass/sightglass.js"></script>
 </body>
