@@ -211,11 +211,6 @@ function draw(plot) {
     g.fillText(ago === 0 ? "now" : `−${describe(ago)}`, at, lines + axis / 2);
   }
   if (heat) return;
-  g.textAlign = "left";
-  g.textBaseline = "top";
-  g.fillText(format(high), 3, 2);
-  g.textBaseline = "bottom";
-  g.fillText(format(low), 3, lines - 2);
 
   // The lines, as one path: each point from its lowest to its highest value.
   g.globalAlpha = 1;
@@ -244,6 +239,21 @@ function draw(plot) {
   }
   g.stroke();
   g.restore();
+
+  // The lowest and highest value, over the lines at full strength, bold and
+  // outlined in the page's background, so no line can hide them.
+  g.font = `bold ${style.fontSize} ${style.fontFamily}`;
+  g.textAlign = "left";
+  g.lineWidth = Math.max(parseFloat(style.fontSize) / 4, 3);
+  g.strokeStyle = background(el);
+  for (const [text, baseline, at] of [
+    [format(high), "top", 2],
+    [format(low), "bottom", lines - 2],
+  ]) {
+    g.textBaseline = baseline;
+    g.strokeText(text, 3, at);
+    g.fillText(text, 3, at);
+  }
 }
 
 function drawHeat(g, plot, from, seconds, width, lines, ratio, color) {

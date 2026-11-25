@@ -448,6 +448,41 @@ async def test_plot_draws_ids_against_time_and_keeps_up(page, serve):
     await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 50")
 
 
+# Records what a canvas does, in order, in window.ops.
+RECORD_DRAWING = """
+window.ops = [];
+const proto = CanvasRenderingContext2D.prototype;
+for (const name of ["stroke", "strokeText", "fillText"]) {
+  const original = proto[name];
+  proto[name] = function (...args) {
+    window.ops.push(name === "stroke" ? "stroke" : `${name}:${args[0]}`);
+    return original.apply(this, args);
+  };
+}
+"""
+
+
+async def test_plot_draws_lowest_and_highest_value_over_the_lines(page, serve):
+    """The labels come after the lines, each outlined, so no line hides them."""
+    await page.add_init_script(RECORD_DRAWING)
+    monitor = Monitor(history=60)
+    monitor.update({"a": 1, "b": 3})
+    plot = (
+        '<div id="plot" data-plot="a b" data-seconds="10"'
+        ' style="width: 400px; height: 200px; background: black"></div>'
+    )
+    await page.goto(serve(plot, monitor))
+    await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 3")
+    ops = await page.evaluate("window.ops")
+    after_lines = ops[len(ops) - ops[::-1].index("stroke") :]
+    assert after_lines == [
+        "strokeText:3",
+        "fillText:3",
+        "strokeText:1",
+        "fillText:1",
+    ]
+
+
 # For each third of a heat map's cells (its three rows), how many pixels are
 # drawn at full strength, and how many at all.
 HEAT_ROWS = """el => {
