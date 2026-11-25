@@ -1,6 +1,8 @@
 """End-to-end tests: RestSource polling a real aiohttp server."""
 
+import importlib.util
 import logging
+from pathlib import Path
 
 import pytest
 from aiohttp import web
@@ -184,3 +186,34 @@ def test_cli_builds_a_source_with_prefixes_and_headers():
 def test_cli_rejects_bad_rest_options(argv, message):
     with pytest.raises(ValueError, match=message):
         build(parser().parse_args(argv))
+
+
+def load_fake_api():
+    path = Path(__file__).parent.parent / "examples" / "rest_grid" / "fake_api.py"
+    spec = importlib.util.spec_from_file_location("fake_api", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def test_example_fake_api_feeds_the_example_dashboard(consume):
+    """The rest_grid example's ids are the ones its page plots, and the null
+    cells of a short last row are skipped."""
+    fake = load_fake_api()
+    server = TestServer(fake.app())
+    await server.start_server()
+    try:
+        monitor = Monitor(max_elements=2000)  # ~1,200 ids, as the example sets
+        endpoint = Endpoint(url(server, "/api/arrays"), prefix="grid", select="arrays")
+        consume(monitor, RestSource(endpoint, interval=0.05))
+        await until(lambda: "grid.Roof.value.0.0" in monitor)
+        rows, cols = fake.ARRAYS["North"]
+        assert f"grid.North.value.{rows - 1}.0" in monitor
+        assert f"grid.North.value.{rows - 1}.{cols - 1}" not in monitor  # null
+        page = (
+            Path(__file__).parent.parent / "examples/rest_grid/page.html"
+        ).read_text("utf-8")
+        for name in fake.ARRAYS:
+            assert f"grid.{name}.value.0.*" in page
+    finally:
+        await server.close()
