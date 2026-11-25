@@ -483,6 +483,45 @@ async def test_plot_draws_lowest_and_highest_value_over_the_lines(page, serve):
     ]
 
 
+# Records the text each plot draws, by the id of its element, in window.labels.
+RECORD_LABELS = """
+window.labels = {};
+const fillText = CanvasRenderingContext2D.prototype.fillText;
+CanvasRenderingContext2D.prototype.fillText = function (text, ...rest) {
+  const id = this.canvas.parentElement?.id;
+  if (id) (window.labels[id] ??= new Set()).add(text);
+  return fillText.call(this, text, ...rest);
+};
+"""
+
+
+async def test_plot_time_axis_uses_one_unit_for_all_its_labels(page, serve):
+    """A wide plot of 5 minutes has labels every 30 s: all in seconds, never
+    "-5 min" next to "-270 s". A narrower one, labelled every minute, is all in
+    minutes."""
+    await page.add_init_script(RECORD_LABELS)
+    monitor = Monitor(history=300)
+    monitor.set("a", 1)
+    plots = "".join(
+        f'<div id="{name}" data-plot="a" data-seconds="300"'
+        f' style="width: {width}px; height: 200px; font: 12px sans-serif"></div>'
+        for name, width in [("wide", 1000), ("narrow", 400)]
+    )
+    await page.goto(serve(plots, monitor))
+    for name in ("wide", "narrow"):
+        await expect(page.locator(f"#{name}")).to_have_attribute(
+            "data-plot-signals", "1"
+        )
+    await page.wait_for_timeout(300)
+    labels = await page.evaluate(
+        "Object.fromEntries(Object.entries(window.labels).map(([k, v]) => [k, [...v]]))"
+    )
+    wide = {t for t in labels["wide"] if t != "now" and t[0] == "−"}
+    narrow = {t for t in labels["narrow"] if t != "now" and t[0] == "−"}
+    assert "−270 s" in wide and not any("min" in t for t in wide), wide
+    assert "−1 min" in narrow and not any(t.endswith(" s") for t in narrow), narrow
+
+
 # For each third of a heat map's cells (its three rows), how many pixels are
 # drawn at full strength, and how many at all.
 HEAT_ROWS = """el => {

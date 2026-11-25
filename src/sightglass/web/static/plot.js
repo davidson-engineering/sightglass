@@ -38,6 +38,7 @@ const TICKS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]; // s
 const USUAL = 2;
 const FULL = 4;
 const MARKS = 400; // at most, the strongest first
+const RANGE_SIZE = 1.4; // the lowest and highest value, in times the font size
 
 const running = new WeakSet();
 
@@ -192,7 +193,10 @@ function draw(plot) {
   if (heat) drawHeat(g, plot, from, seconds, width, lines, ratio, style.color);
 
   // The time axis: a line every few seconds, labelled back from now.
-  const tick = TICKS.find((s) => (s / seconds) * width >= 70) ?? seconds;
+  // Labels need room: at least 70 px apart, more for bigger text.
+  const gap = Math.max(70, parseFloat(style.fontSize) * 4.5);
+  const tick = TICKS.find((s) => (s / seconds) * width >= gap) ?? seconds;
+  const minutes = tick % 60 === 0; // one unit for every label on the axis
   g.globalAlpha = 0.22;
   g.lineWidth = 1;
   g.beginPath();
@@ -208,7 +212,8 @@ function draw(plot) {
   for (let ago = 0; ago <= seconds; ago += tick) {
     const at = x(plot.end - ago);
     g.textAlign = ago === 0 ? "right" : at < 30 ? "left" : "center";
-    g.fillText(ago === 0 ? "now" : `−${describe(ago)}`, at, lines + axis / 2);
+    const label = minutes ? `${ago / 60} min` : `${ago} s`;
+    g.fillText(ago === 0 ? "now" : `−${label}`, at, lines + axis / 2);
   }
   if (heat) return;
 
@@ -242,7 +247,7 @@ function draw(plot) {
 
   // The lowest and highest value, over the lines at full strength, bold and
   // outlined in the page's background, so no line can hide them.
-  g.font = `bold ${style.fontSize} ${style.fontFamily}`;
+  g.font = `bold ${parseFloat(style.fontSize) * RANGE_SIZE}px ${style.fontFamily}`;
   g.textAlign = "left";
   g.lineWidth = Math.max(parseFloat(style.fontSize) / 4, 3);
   g.strokeStyle = background(el);
