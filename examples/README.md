@@ -194,16 +194,17 @@ to add if it doesn't answer. Writing also needs `--allow-writes`, `--token`
 and `SIGHTGLASS_ALLOW_WRITES=1`: see
 [the README](../README.md#beckhoff-twincat-plcs-ads).
 
-## 10. A REST API, on a wall display
+## 10. A dashboard from a config file (a REST API)
 
-Readings from a web service that answers GET with JSON, polled five times a
-second with `RestSource` and plotted against time. Each of five sensor arrays
-shows lines for its first row of cells over the last 5 minutes and, bigger,
-the last minute, on a dark page with large text for reading from across a
-room. It needs no service of its own: it starts a fake API, which you can run
-alone with [rest_grid/fake_api.py](rest_grid/fake_api.py). The page is plain
-HTML, so edit the array names in it to match your own API.
-[rest_grid/](rest_grid/)
+A whole dashboard in one TOML file: where the values come from (a web service
+that answers GET with JSON, polled five times a second) and what to plot. No
+code and no page to write. Each of five sensor arrays gets a card with lines
+for its first row of cells over the last 5 minutes and, bigger, the last
+minute, on a dark page with large text for reading from across a room. The
+cards wrap like Grafana's panels as the screen changes size.
+[rest_grid/dashboard.toml](rest_grid/dashboard.toml) is commented line by
+line. It needs no service of its own: `dashboard.py` starts a fake API
+([rest_grid/fake_api.py](rest_grid/fake_api.py)) and points the file at it.
 
 ![The sensor grid wall display: five cards, North, South, East, West and Roof, each plotting its sensors over the last 5 minutes and, larger, the last minute](../docs/rest-grid.webp)
 
@@ -214,5 +215,6 @@ uv run --all-extras examples/rest_grid/dashboard.py            # the fake API
 uv run --all-extras examples/rest_grid/dashboard.py http://host:8000/api/arrays
 ```
 
-To plot a JSON API without a page of your own, `sightglass --rest URL` shows
-every value as text, and `--history 300` keeps what the plots need.
+For your own API, copy `dashboard.toml`, change the `url`, `prefix`, `select`
+and the panels, and run `sightglass --config your.toml`. The README describes
+every key.

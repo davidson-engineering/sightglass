@@ -1,0 +1,26 @@
+# A dashboard for the fake API in fake_api.py, or any API shaped like it:
+#
+#   GET /api/arrays  ->  {"arrays": {"North": {"value": [[1.5, 2.0], [3.1, null]], ...}, ...}}
+#
+# Run it with:   sightglass --config examples/rest_grid/dashboard.toml
+# (set API_URL to point it at your own API; see dashboard.py for the fake one)
+
+title = "Sensor grids"
+
+# Where the values come from. ${NAME:-default} is an environment variable, so a
+# URL or a token need not be in the file.
+[[source]]
+type = "rest"
+url = "${API_URL:-http://127.0.0.1:8000/api/arrays}"
+prefix = "grid"          # ids start "grid."
+select = "arrays"        # start from this place in the JSON
+interval = 0.2           # seconds between polls
+
+# What to plot: a card per name, a plot per range (seconds), longest on top,
+# the shortest biggest. Each id is "grid.<name>.value.<row>.<column>"; `*`
+# stands for any characters, so this is every cell of row 0.
+[[panel]]
+each = ["North", "South", "East", "West", "Roof"]
+title = "{name}"
+ids = ["grid.{name}.value.0.*"]
+ranges = [300, 60]

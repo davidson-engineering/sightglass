@@ -299,6 +299,49 @@ doesn't answer). Add it in TwinCAT, or with pyads' `add_route_to_plc`. On
 Windows, pyads goes through TwinCAT's own ADS router: install TwinCAT (XAE,
 XAR or the TC1000 ADS setup) and add the route there.
 
+## Dashboards from a config file
+
+`sightglass --config dashboard.toml` builds a whole dashboard from a file: the
+sources, and the panels that plot them. There is no page to write, and the file
+can be kept apart from sightglass, one per dashboard.
+
+```toml
+title = "Plant"
+
+[[source]]
+type = "rest"                                  # poll a JSON API with GET
+url = "${API_URL:-http://localhost:8000/api/readings}"
+prefix = "plant"                               # ids start "plant."
+select = "sensors"                             # start from this place in the JSON
+interval = 0.5                                 # seconds between polls
+
+[[panel]]                                      # a card per name
+each = ["North", "South"]
+title = "{name}"
+ids = ["plant.{name}.value.*"]                 # * stands for any characters
+ranges = [300, 60]                             # seconds: 5 minutes, then 1
+```
+
+The page is a dark, large-text layout for reading from across a room: cards
+wrap like Grafana's panels (each at least `card_width` pixels wide, 520 by
+default, so the count per row follows the screen), the last row's cards grow to
+fill it, and rows share the height. Each card plots its ids over every range,
+the longest at the top and the shortest biggest. It is one screen with nothing
+to scroll.
+
+| Key | Meaning |
+| --- | --- |
+| `title`, `history`, `max_elements`, `card_width` | the page heading; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a card |
+| `[[source]]` | `type = "rest"`, `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see `Endpoint` and `RestSource` above |
+| `[[panel]]` | `title`, `ids`, `ranges` (default `[300, 60]`), `mode` (`"lines"`, or `"heatmap"` for many ids), `each` (a list of names: one card per name, `{name}` in the title and ids) |
+
+Text in a source may hold `${NAME}` or `${NAME:-default}`, replaced by that
+environment variable, so a token never has to be in the file. A mistake in the
+file, such as an unknown key, is one clear line. `--port`, `--host`, `--open`
+and `--token` still apply; the options the file replaces (`--rest`, `--title`,
+`--history` and so on) are refused. [examples/](examples/README.md#10-a-dashboard-from-a-config-file-a-rest-api)
+has one to copy.
+
 ## Outputs
 
 **`WebDashboard(page=None, static_dir=None, host="127.0.0.1", port=8080, title="Monitor", theme="classic", token=None, stale_after=None)`**
