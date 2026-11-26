@@ -3,9 +3,8 @@
 // For checking what a feed actually sends. sightglass.js loads this module
 // the first time the view opens: the ` key, or an element marked
 // data-signals-open. In the view, ` and Escape close it, and typing filters
-// the signals by id. Each row's Rate is how often its values arrive, from
-// the server's count of them, and a polling source's polls a second and
-// poll times are listed above the table.
+// the signals by id. Above the table: each polling source's polls a second
+// and poll times, and how the page itself is keeping up.
 //
 // The view lives in a shadow root, so the page's CSS and its own stay apart.
 // It follows the page's theme (html[data-theme], html[data-crt]) and its
@@ -28,13 +27,13 @@ const MARKUP = `
       <button type="button" class="close">Close</button>
     </header>
     <p class="feeds"></p>
+    <p class="page"></p>
     <div class="scroll">
       <table>
-        <colgroup><col class="name"><col class="value"><col><col class="rate"><col class="age"></colgroup>
+        <colgroup><col class="name"><col class="value"><col><col class="age"></colgroup>
         <thead>
           <tr><th scope="col">Signal</th><th scope="col">Value</th>
-              <th scope="col">Last minute</th><th scope="col" class="rate">Rate</th>
-              <th scope="col" class="age">Updated</th></tr>
+              <th scope="col">Last minute</th><th scope="col" class="age">Updated</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -56,8 +55,7 @@ let loaded = false; // a snapshot has arrived since the view opened
 
 let slots = 120; // per chart, from the server
 let slot = 0; // the newest slot the charts show
-const RATE_WINDOW = 10000; // ms of arrivals the rate covers
-const signals = new Map(); // id -> {id, row, value, chart, path, age, rate, marks, trace, number, arrived}
+const signals = new Map(); // id -> {id, row, value, chart, path, age, trace, number, arrived}
 const dirty = new Set(); // signals whose chart needs drawing
 const visible = new Set(); // signals whose row is (nearly) in view
 
@@ -76,6 +74,7 @@ export async function open() {
   host.dataset.connection = "connecting";
   connect(250);
   ticker = setInterval(showAges, 1000);
+  watchPage();
   render();
 }
 
@@ -97,6 +96,7 @@ async function build() {
     count: root.querySelector(".count"),
     status: root.querySelector(".status"),
     feeds: root.querySelector(".feeds"),
+    page: root.querySelector(".page"),
     filter: root.querySelector("input"),
     empty: root.querySelector(".empty"),
   };
@@ -156,6 +156,7 @@ async function build() {
 }
 
 function shut() {
+  unwatchPage();
   clearTimeout(retry);
   clearInterval(ticker);
   cancelAnimationFrame(frame);
@@ -210,7 +211,6 @@ function receive(message) {
     signal.value.textContent = data.text;
     signal.value.title = data.text;
     signal.age.textContent = ago(signal.arrived);
-    mark(signal, data.count);
     dirty.add(signal);
   }
   if (message.feeds) showFeeds(message.feeds);
@@ -247,7 +247,6 @@ function create(id) {
   const value = Object.assign(document.createElement("td"), { className: "value" });
   const chart = Object.assign(document.createElement("td"), { className: "chart" });
   const age = Object.assign(document.createElement("td"), { className: "age" });
-  const rate = Object.assign(document.createElement("td"), { className: "rate" });
   const svg = document.createElementNS(SVG, "svg");
   svg.setAttribute("viewBox", `-0.5 0 ${slots} 20`); // slot i spans i - 0.5 to i + 0.5
   svg.setAttribute("preserveAspectRatio", "none");
@@ -255,9 +254,8 @@ function create(id) {
   const path = document.createElementNS(SVG, "path");
   svg.append(path);
   chart.append(svg);
-  row.append(name, value, chart, rate, age);
-  const marks = []; // [arrived, count] as the count changed, within the window
-  const signal = { id, row, value, chart, path, age, rate, marks, trace: new Array(slots).fill(null) };
+  row.append(name, value, chart, age);
+  const signal = { id, row, value, chart, path, age, trace: new Array(slots).fill(null) };
   row.signal = signal;
   signals.set(id, signal);
   observer.observe(row);
@@ -360,30 +358,8 @@ const fixed = (rate) => (rate < 10 ? rate.toFixed(2) : rate.toFixed(1));
 const short = (number) => String(Number(number.toPrecision(6)));
 
 function showAges() {
-  for (const signal of visible) {
-    signal.age.textContent = ago(signal.arrived);
-    signal.rate.textContent = rateOf(signal);
-  }
-}
-
-// Arrivals a second, from how the server's count of a signal's values grew
-// over the last RATE_WINDOW ms: what a feed really delivers, repeats included.
-function mark(signal, count) {
-  const { marks } = signal;
-  if (marks.length && marks[marks.length - 1][1] === count) return;
-  marks.push([signal.arrived, count]);
-  signal.rate.textContent = rateOf(signal);
-}
-
-function rateOf(signal) {
-  const { marks } = signal;
-  const from = Date.now() - RATE_WINDOW;
-  while (marks.length > 1 && marks[1][0] < from) marks.shift(); // keep one before the window
-  if (marks.length < 2) return signal.arrived < from ? "0 Hz" : "";
-  const [first, last] = [marks[0], marks[marks.length - 1]];
-  if (last[0] <= first[0]) return "";
-  if (last[0] < from) return "0 Hz";
-  return `${fixed((last[1] - first[1]) / ((last[0] - first[0]) / 1000))} Hz`;
+  for (const signal of visible) signal.age.textContent = ago(signal.arrived);
+  showPage();
 }
 
 // Each polling source: how often it polled, and how long a poll took.
@@ -401,6 +377,92 @@ function showFeeds(feeds) {
     }),
   );
   line.replaceChildren(...[...line.children].flatMap((el, i) => (i ? [" · ", el] : [el])));
+}
+
+// Whether the page keeps up, measured while the view is open: the page's
+// frames, how long the dashboard's messages wait for the page and take to
+// apply, and how quickly plots get their points. Figures are for the last
+// second; the page's other code announces what it does with events.
+let page = null;
+let frameId = 0;
+let longTasks = null;
+
+const fresh = () => ({
+  frames: 0, gap: 0, messages: 0, waited: 0, handled: 0,
+  plots: 0, plotSlowest: 0, blocked: 0, longest: 0,
+});
+
+function watchPage() {
+  page = { ...fresh(), merged: null, merges: 0, seen: false };
+  let last = 0;
+  const frame = (now) => {
+    if (last) {
+      page.frames += 1;
+      page.gap = Math.max(page.gap, now - last);
+    }
+    last = now;
+    frameId = requestAnimationFrame(frame);
+  };
+  frameId = requestAnimationFrame(frame);
+  document.addEventListener("monitor:message", onMessage);
+  document.addEventListener("monitor:plot", onPlot);
+  try {
+    longTasks = new PerformanceObserver((list) => {
+      for (const task of list.getEntries()) {
+        page.blocked += 1;
+        page.longest = Math.max(page.longest, task.duration);
+      }
+    });
+    longTasks.observe({ type: "longtask" });
+  } catch {
+    longTasks = null; // not in this browser
+  }
+}
+
+function unwatchPage() {
+  cancelAnimationFrame(frameId);
+  document.removeEventListener("monitor:message", onMessage);
+  document.removeEventListener("monitor:plot", onPlot);
+  longTasks?.disconnect();
+  longTasks = null;
+  page = null;
+  parts.page.textContent = "";
+}
+
+function onMessage({ detail }) {
+  if (!page) return;
+  page.messages += 1;
+  page.waited = Math.max(page.waited, detail.queued);
+  page.handled = Math.max(page.handled, detail.handled);
+  page.merged ??= detail.merged; // counted from when the view opened
+  page.merges = detail.merged - page.merged;
+}
+
+function onPlot({ detail }) {
+  if (!page) return;
+  page.plots += 1;
+  page.plotSlowest = Math.max(page.plotSlowest, detail.took);
+}
+
+const ms = (value) => `${Math.round(value)} ms`;
+
+function showPage() {
+  if (!page) return;
+  const was = page;
+  page = { ...fresh(), merged: was.merged, merges: was.merges, seen: true };
+  const behind = was.waited > 100 || was.gap > 100;
+  const bits = [`${was.frames} frames a second, longest ${ms(was.gap)}`];
+  if (was.messages) {
+    bits.push(
+      `values: ${was.messages} messages, waited up to ${ms(was.waited)}, ` +
+        `applied in up to ${ms(was.handled)}, ${was.merges} merged since opening`,
+    );
+  }
+  if (was.plots) bits.push(`plots: ${was.plots} requests, slowest ${ms(was.plotSlowest)}`);
+  if (longTasks) bits.push(was.blocked ? `${was.blocked} long tasks, longest ${ms(was.longest)}` : "no long tasks");
+  const line = parts.page;
+  line.className = behind ? "page behind" : "page";
+  line.textContent = `Page: ${bits.join(" · ")}`;
 }
 
 function ago(arrived) {

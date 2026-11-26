@@ -386,6 +386,9 @@ class WebDashboard:
         # Each browser gets its own loop, so a slow one just receives fewer,
         # larger updates instead of holding up the others.
         version, layout = monitor.version, monitor.layout_version
+        merged = (
+            0  # updates sent folded into another: the page was too slow, or the cap
+        )
         try:
             await ws.send_json(self._snapshot(monitor))
             self._record_sent(id(ws), version)
@@ -395,8 +398,13 @@ class WebDashboard:
                     layout = monitor.layout_version
                     await ws.send_json(self._snapshot(monitor))
                 else:
+                    merged += latest - version - 1
                     await ws.send_json(
-                        {"type": "update", "values": monitor.changes_since(version)}
+                        {
+                            "type": "update",
+                            "values": monitor.changes_since(version),
+                            "merged": merged,
+                        }
                     )
                 version = latest
                 self._record_sent(id(ws), version)

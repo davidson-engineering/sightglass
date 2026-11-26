@@ -330,16 +330,46 @@ class Ticking:
             yield [{"speed": n}]
 
 
-async def test_signals_view_shows_how_often_each_signal_and_source_arrives(page, serve):
+async def test_signals_view_shows_how_fast_the_sources_poll(page, serve):
     monitor = Monitor()
     await page.goto(serve(None, monitor, sources=[Ticking()]))
     await page.locator("[data-signals-open]").click()
-    view = page.locator("sightglass-signals")
-    rate = view.locator("tbody tr", has_text="speed").locator(".rate")
-    await expect(rate).to_have_text(re.compile(r"^[45]\.\d\d Hz$"), timeout=15_000)
-    feeds = view.locator(".feeds")
-    await expect(feeds).to_contain_text("http://plant/api: ", timeout=5_000)
-    await expect(feeds).to_have_text(re.compile(r"4\.\d\d polls/s, last 2\d\d ms"))
+    feeds = page.locator("sightglass-signals .feeds")
+    await expect(feeds).to_have_text(
+        re.compile(r"http://plant/api: [45]\.\d\d polls/s, last 2\d\d ms"),
+        timeout=15_000,
+    )
+
+
+async def test_signals_view_shows_whether_the_page_keeps_up(page, serve):
+    monitor = Monitor()
+    await page.goto(serve(None, monitor, sources=[Ticking()]))
+    await page.locator("[data-signals-open]").click()
+    line = page.locator("sightglass-signals .page")
+    await expect(line).to_have_text(
+        re.compile(
+            r"^Page: \d+ frames a second, longest \d+ ms"
+            r" · values: [3-6] messages, waited up to \d+ ms,"
+            r" applied in up to \d+ ms, 0 merged since opening"
+        ),
+        timeout=15_000,
+    )
+    await expect(line).not_to_have_class(re.compile("behind"))
+    # a page that is blocked is behind, and says so
+    await page.evaluate(
+        "() => { const end = Date.now() + 1500; while (Date.now() < end); }"
+    )
+    await expect(line).to_have_class(re.compile("behind"), timeout=5_000)
+
+
+async def test_signals_view_shows_how_quickly_plots_get_their_points(page, serve):
+    monitor = Monitor(history=60)
+    monitor.set("a", 1)
+    body = '<div data-plot="a" style="height: 100px"></div>'
+    await page.goto(serve(body, monitor))
+    await page.locator("body").press("`")
+    line = page.locator("sightglass-signals .page")
+    await expect(line).to_contain_text("plots: ", timeout=10_000)
 
 
 async def test_signals_view_charts_are_one_line_forward_in_time(page, serve):

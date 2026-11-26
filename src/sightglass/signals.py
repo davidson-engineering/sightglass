@@ -35,14 +35,13 @@ def slot_at(now: float) -> int:
 class Signal:
     """One id's latest value and its last :data:`SLOTS` slots."""
 
-    __slots__ = ("count", "number", "track", "updated", "value", "version")
+    __slots__ = ("number", "track", "updated", "value", "version")
 
     def __init__(self, slot: int) -> None:
         self.value: Any = None
         self.number: float | None = None  # the latest value, charted
         self.updated = 0.0
         self.version = 0
-        self.count = 0  # values received, however often they repeat
         self.track = Track(SLOTS, slot)
 
     def record(self, value: Any, slot: int, now: float, version: int) -> None:
@@ -51,7 +50,6 @@ class Signal:
         self.track.record(self.number, slot)
         self.value = value
         self.updated, self.version = now, version
-        self.count += 1
 
     def trace(self, first: int, last: int) -> list[Point]:
         """Slots ``first`` to ``last``, inclusive."""
@@ -62,7 +60,6 @@ class Signal:
             "text": default_text(self.value),
             "number": self.number,
             "age": max(now - self.updated, 0.0),
-            "count": self.count,
             "trace": self.trace(first, last),
         }
 

@@ -172,10 +172,23 @@ async def test_web_sends_snapshot_then_only_changes(client):
     assert update == {
         "type": "update",
         "values": {"speed": "3", "machine": {"estop": False, "enabled": True}},
+        "merged": 0,
     }
     client.monitor.update({"X.velocity": 12})
     update = await ws.receive_json(timeout=1)
     assert update["values"] == {"X.velocity": {"text": "12.00 mm/s", "ratio": 0.12}}
+    await ws.close()
+
+
+async def test_web_counts_the_updates_it_folds_into_one_message(client):
+    ws = await client.ws_connect("/ws")
+    await ws.receive_json(timeout=1)
+    for value in (1, 2, 3):  # three updates before the page's next message
+        client.monitor.update({"speed": value})
+    update = await ws.receive_json(timeout=1)
+    assert update["values"]["speed"] == "3" and update["merged"] == 2
+    client.monitor.update({"speed": 4})
+    assert (await ws.receive_json(timeout=1))["merged"] == 2  # a running total
     await ws.close()
 
 

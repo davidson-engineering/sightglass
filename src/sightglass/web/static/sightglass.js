@@ -199,6 +199,11 @@
       retryDelay = 250;
     };
     socket.onmessage = (event) => {
+      // How long the message waited for the page's main thread, and how long
+      // the page took over it: what the signals view reports as the page
+      // keeping up.
+      const began = performance.now();
+      const queued = event.timeStamp > 0 ? began - event.timeStamp : 0;
       const message = JSON.parse(event.data);
       if (message.type === "snapshot") {
         staleAfter = message.staleAfter ?? null;
@@ -207,6 +212,11 @@
         startPlots();
       }
       apply(message.values, message.ages);
+      document.dispatchEvent(
+        new CustomEvent("monitor:message", {
+          detail: { queued, handled: performance.now() - began, merged: message.merged ?? 0 },
+        }),
+      );
     };
     socket.onclose = () => {
       root.dataset.connection = "closed";

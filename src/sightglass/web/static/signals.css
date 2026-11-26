@@ -176,10 +176,6 @@ col.age {
   width: 92px;
 }
 
-col.rate {
-  width: 76px;
-}
-
 th,
 td {
   padding: 6px 8px;
@@ -254,7 +250,8 @@ tbody tr:last-child > * {
   vector-effect: non-scaling-stroke;
 }
 
-.feeds {
+.feeds,
+.page {
   margin: 0;
   padding: 6px 16px;
   color: var(--muted);
@@ -262,15 +259,16 @@ tbody tr:last-child > * {
   font-variant-numeric: tabular-nums;
 }
 
-.feeds:empty {
+.feeds:empty,
+.page:empty {
   display: none;
 }
 
-.feeds .failing {
+.feeds .failing,
+.page.behind {
   color: var(--warn);
 }
 
-.rate,
 .age {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -311,8 +309,6 @@ tbody tr:last-child > * {
   }
 
   col.age,
-  col.rate,
-  .rate,
   .age {
     display: none;
   }
@@ -348,10 +344,6 @@ tbody tr:last-child > * {
 }
 
 :host([data-theme="terminal"]) col.age {
-  width: 104px;
-}
-
-:host([data-theme="terminal"]) col.rate {
   width: 104px;
 }
 
