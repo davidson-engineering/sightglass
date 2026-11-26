@@ -3,7 +3,9 @@
 // For checking what a feed actually sends. sightglass.js loads this module
 // the first time the view opens: the ` key, or an element marked
 // data-signals-open. In the view, ` and Escape close it, and typing filters
-// the signals by id.
+// the signals by id. Each row's Rate is how often its values arrive, from
+// the server's count of them, and a polling source's polls a second and
+// poll times are listed above the table.
 //
 // The view lives in a shadow root, so the page's CSS and its own stay apart.
 // It follows the page's theme (html[data-theme], html[data-crt]) and its
@@ -25,12 +27,14 @@ const MARKUP = `
              autocomplete="off" spellcheck="false">
       <button type="button" class="close">Close</button>
     </header>
+    <p class="feeds"></p>
     <div class="scroll">
       <table>
-        <colgroup><col class="name"><col class="value"><col><col class="age"></colgroup>
+        <colgroup><col class="name"><col class="value"><col><col class="rate"><col class="age"></colgroup>
         <thead>
           <tr><th scope="col">Signal</th><th scope="col">Value</th>
-              <th scope="col">Last minute</th><th scope="col" class="age">Updated</th></tr>
+              <th scope="col">Last minute</th><th scope="col" class="rate">Rate</th>
+              <th scope="col" class="age">Updated</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -52,7 +56,8 @@ let loaded = false; // a snapshot has arrived since the view opened
 
 let slots = 120; // per chart, from the server
 let slot = 0; // the newest slot the charts show
-const signals = new Map(); // id -> {id, row, value, chart, path, age, trace, number, arrived}
+const RATE_WINDOW = 10000; // ms of arrivals the rate covers
+const signals = new Map(); // id -> {id, row, value, chart, path, age, rate, marks, trace, number, arrived}
 const dirty = new Set(); // signals whose chart needs drawing
 const visible = new Set(); // signals whose row is (nearly) in view
 
@@ -91,6 +96,7 @@ async function build() {
     body: root.querySelector("tbody"),
     count: root.querySelector(".count"),
     status: root.querySelector(".status"),
+    feeds: root.querySelector(".feeds"),
     filter: root.querySelector("input"),
     empty: root.querySelector(".empty"),
   };
@@ -204,8 +210,10 @@ function receive(message) {
     signal.value.textContent = data.text;
     signal.value.title = data.text;
     signal.age.textContent = ago(signal.arrived);
+    mark(signal, data.count);
     dirty.add(signal);
   }
+  if (message.feeds) showFeeds(message.feeds);
   if (added.length || message.type === "snapshot") place();
   schedule();
 }
@@ -239,6 +247,7 @@ function create(id) {
   const value = Object.assign(document.createElement("td"), { className: "value" });
   const chart = Object.assign(document.createElement("td"), { className: "chart" });
   const age = Object.assign(document.createElement("td"), { className: "age" });
+  const rate = Object.assign(document.createElement("td"), { className: "rate" });
   const svg = document.createElementNS(SVG, "svg");
   svg.setAttribute("viewBox", `-0.5 0 ${slots} 20`); // slot i spans i - 0.5 to i + 0.5
   svg.setAttribute("preserveAspectRatio", "none");
@@ -246,8 +255,9 @@ function create(id) {
   const path = document.createElementNS(SVG, "path");
   svg.append(path);
   chart.append(svg);
-  row.append(name, value, chart, age);
-  const signal = { id, row, value, chart, path, age, trace: new Array(slots).fill(null) };
+  row.append(name, value, chart, rate, age);
+  const marks = []; // [arrived, count] as the count changed, within the window
+  const signal = { id, row, value, chart, path, age, rate, marks, trace: new Array(slots).fill(null) };
   row.signal = signal;
   signals.set(id, signal);
   observer.observe(row);
@@ -346,10 +356,51 @@ function drawChart(signal) {
   chart.title = span ? `Lowest ${short(low)}, highest ${short(high)}` : `Steady at ${short(low)}`;
 }
 
+const fixed = (rate) => (rate < 10 ? rate.toFixed(2) : rate.toFixed(1));
 const short = (number) => String(Number(number.toPrecision(6)));
 
 function showAges() {
-  for (const signal of visible) signal.age.textContent = ago(signal.arrived);
+  for (const signal of visible) {
+    signal.age.textContent = ago(signal.arrived);
+    signal.rate.textContent = rateOf(signal);
+  }
+}
+
+// Arrivals a second, from how the server's count of a signal's values grew
+// over the last RATE_WINDOW ms: what a feed really delivers, repeats included.
+function mark(signal, count) {
+  const { marks } = signal;
+  if (marks.length && marks[marks.length - 1][1] === count) return;
+  marks.push([signal.arrived, count]);
+  signal.rate.textContent = rateOf(signal);
+}
+
+function rateOf(signal) {
+  const { marks } = signal;
+  const from = Date.now() - RATE_WINDOW;
+  while (marks.length > 1 && marks[1][0] < from) marks.shift(); // keep one before the window
+  if (marks.length < 2) return signal.arrived < from ? "0 Hz" : "";
+  const [first, last] = [marks[0], marks[marks.length - 1]];
+  if (last[0] <= first[0]) return "";
+  if (last[0] < from) return "0 Hz";
+  return `${fixed((last[1] - first[1]) / ((last[0] - first[0]) / 1000))} Hz`;
+}
+
+// Each polling source: how often it polled, and how long a poll took.
+function showFeeds(feeds) {
+  const { feeds: line } = parts;
+  line.replaceChildren(
+    ...feeds.map(({ name, rate, took, slowest, failing }) => {
+      const item = document.createElement("span");
+      item.className = failing ? "failing" : "";
+      const ms = (s) => (s === null ? "-" : `${Math.round(s * 1000)} ms`);
+      item.textContent =
+        `${name}: ${rate === null ? "-" : fixed(rate)} polls/s, ` +
+        `last ${ms(took)}, slowest ${ms(slowest)}${failing ? ", failing" : ""}`;
+      return item;
+    }),
+  );
+  line.replaceChildren(...[...line.children].flatMap((el, i) => (i ? [" · ", el] : [el])));
 }
 
 function ago(arrived) {

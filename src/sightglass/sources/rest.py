@@ -12,7 +12,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
-from ._poll import Failed, parse, poll, read_body
+from ._poll import Failed, Feed, parse, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +84,7 @@ class RestSource:
         self.interval = interval
         self.headers = dict(headers or {})
         self.timeout = timeout
+        self.feeds = [Feed(endpoint.url) for endpoint in self.endpoints]
 
     async def updates(self) -> AsyncIterator[list[Update]]:
         queue: asyncio.Queue[Update] = asyncio.Queue()
@@ -91,8 +92,8 @@ class RestSource:
             headers=self.headers, timeout=aiohttp.ClientTimeout(total=self.timeout)
         ) as session:
             tasks = [
-                asyncio.create_task(self._poll(session, endpoint, queue))
-                for endpoint in self.endpoints
+                asyncio.create_task(self._poll(session, endpoint, queue, feed))
+                for endpoint, feed in zip(self.endpoints, self.feeds, strict=True)
             ]
             try:
                 while True:
@@ -110,12 +111,14 @@ class RestSource:
         session: aiohttp.ClientSession,
         endpoint: Endpoint,
         queue: asyncio.Queue[Update],
+        feed: Feed,
     ) -> None:
         await poll(
             lambda: self._fetch(session, endpoint),
             endpoint.interval or self.interval,
             queue,
             endpoint.url,
+            feed,
         )
 
     async def _fetch(

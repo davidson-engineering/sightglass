@@ -23,6 +23,7 @@ from sightglass import (
     TextElement,
     WebDashboard,
 )
+from sightglass.sources._poll import Feed
 
 from .conftest import until
 
@@ -54,8 +55,9 @@ def serve(tmp_path):
                 f"<style>{options.pop('css', '')}</style></head><body>{body}"
                 '<script src="/_sightglass/sightglass.js"></script></body></html>'
             )
+        sources = options.pop("sources", ())
         web = WebDashboard(page, port=0, announce=False, **options)
-        started.append(monitor.start(outputs=[web]))
+        started.append(monitor.start(sources=sources, outputs=[web]))
         return web.url
 
     yield serve
@@ -309,6 +311,35 @@ async def test_signals_view_lists_every_value_sent_with_its_last_minute(page, se
     await expect(view.locator("dialog")).to_be_hidden()
     feed = next(s for s in sockets if s.url.endswith("/ws/signals"))
     await until(feed.is_closed)  # nothing streams while it's closed
+
+
+class Ticking:
+    """A polling source that answers every 0.2 s: 5 Hz."""
+
+    def __init__(self):
+        self.feeds = [Feed("http://plant/api")]
+
+    async def updates(self):
+        loop = asyncio.get_running_loop()
+        n = 0
+        while True:
+            began = loop.time()
+            await asyncio.sleep(0.2)
+            self.feeds[0].record(loop.time(), loop.time() - began, failed=False)
+            n += 1
+            yield [{"speed": n}]
+
+
+async def test_signals_view_shows_how_often_each_signal_and_source_arrives(page, serve):
+    monitor = Monitor()
+    await page.goto(serve(None, monitor, sources=[Ticking()]))
+    await page.locator("[data-signals-open]").click()
+    view = page.locator("sightglass-signals")
+    rate = view.locator("tbody tr", has_text="speed").locator(".rate")
+    await expect(rate).to_have_text(re.compile(r"^[45]\.\d\d Hz$"), timeout=15_000)
+    feeds = view.locator(".feeds")
+    await expect(feeds).to_contain_text("http://plant/api: ", timeout=5_000)
+    await expect(feeds).to_have_text(re.compile(r"4\.\d\d polls/s, last 2\d\d ms"))
 
 
 async def test_signals_view_charts_are_one_line_forward_in_time(page, serve):

@@ -504,7 +504,12 @@ yours) has a view for checking what a feed sends: press `` ` `` (or click
 **Signals** on the generic page, or an element of yours marked
 `data-signals-open`). It lists every id the dashboard has accepted, its latest
 value as sent (before an element scales or formats it), how long ago it
-arrived, and a chart of its last minute. The charts share one time axis, so
+arrived, how often it arrives (a rate in Hz over the last 10 seconds, repeats
+of the same value counted), and a chart of its last minute. For a dashboard
+with REST or InfluxDB sources, a line above the table gives each one's polls a
+second and how long the last and slowest recent polls took, so a feed that is
+not arriving at its interval shows whether the service or the dashboard is the
+slow part. The charts share one time axis, so
 what changed together lines up; the line reaches the lowest and highest value
 of each half second, so a fast swing isn't lost, and booleans and on/off chart
 as steps. Type to filter by id; `` ` `` or Escape closes it. It streams over a

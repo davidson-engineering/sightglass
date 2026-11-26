@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -21,6 +22,36 @@ OFF_LOOP_BYTES = 256 * 1024  # replies over this are parsed in a worker thread
 
 class Failed(Exception):
     """A poll that produced no values; the message says why."""
+
+
+class Feed:
+    """How a polling source is keeping up, for the signals view: polls a
+    second, and how long the last and the slowest of the recent ones took."""
+
+    WINDOW = 10.0  # seconds of polls the figures cover
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.failing = False
+        self._polls: deque[tuple[float, float]] = deque()  # (ended, took)
+
+    def record(self, ended: float, took: float, failed: bool) -> None:
+        self.failing = failed
+        self._polls.append((ended, took))
+        while self._polls and self._polls[0][0] < ended - self.WINDOW:
+            self._polls.popleft()
+
+    def to_json(self, now: float) -> dict[str, Any]:
+        """``now`` is the event loop's clock."""
+        polls = [p for p in self._polls if p[0] >= now - self.WINDOW]
+        span = polls[-1][0] - polls[0][0] if polls else 0.0
+        return {
+            "name": self.name,
+            "rate": (len(polls) - 1) / span if span > 0 else None,
+            "took": polls[-1][1] if polls else None,
+            "slowest": max((p[1] for p in polls), default=None),
+            "failing": self.failing,
+        }
 
 
 async def read_body(response: aiohttp.ClientResponse, limit: int) -> bytes:
@@ -53,6 +84,7 @@ async def poll(
     every: float,
     queue: asyncio.Queue[Update],
     name: str,
+    feed: Feed | None = None,
 ) -> None:
     """Call ``fetch`` every ``every`` seconds and queue what it returns.
 
@@ -67,6 +99,7 @@ async def poll(
     showing: set[str] = set()  # the ids with a valid value on display
     due = loop.time()
     while True:
+        began = loop.time()
         try:
             reply = await fetch()
             reason = None
@@ -74,6 +107,8 @@ async def poll(
             reason = str(failure)
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
+        if feed is not None:
+            feed.record(loop.time(), loop.time() - began, reason is not None)
         if reason is not None:
             reply = {}
             if reason != logged:  # a new cause is worth a line too

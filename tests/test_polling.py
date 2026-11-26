@@ -10,6 +10,7 @@ from aiohttp.test_utils import TestServer
 
 from sightglass import InfluxSource, Monitor, RestSource
 from sightglass.sources import rest
+from sightglass.sources._poll import Feed
 
 from .conftest import until
 
@@ -181,3 +182,28 @@ async def test_a_big_reply_is_parsed_in_a_worker_thread_and_a_small_one_inline(
     consume(monitor, RestSource(str(server.make_url("/small")), interval=0.5))
     await until(lambda: where, within=10)
     assert where[0] is True  # a few bytes: not worth a thread
+
+
+def test_a_feed_reports_polls_a_second_and_how_long_they_took():
+    feed = Feed("x")
+    assert feed.to_json(0)["rate"] is None  # nothing polled yet
+    for i in range(6):  # a poll every 0.2 s, each 30 ms, the third 90 ms
+        feed.record(i * 0.2, 0.09 if i == 2 else 0.03, failed=False)
+    report = feed.to_json(1.0)
+    assert report["rate"] == pytest.approx(5.0)
+    assert (report["took"], report["slowest"]) == (0.03, 0.09)
+    feed.record(1.2, 0.03, failed=True)
+    assert feed.to_json(1.2)["failing"] is True
+    assert feed.to_json(60)["rate"] is None  # old polls are forgotten
+    assert feed.to_json(60)["slowest"] is None
+
+
+async def test_a_running_source_shows_how_fast_it_is_polled(server, consume):
+    monitor = Monitor()
+    consume(monitor, RestSource(str(server.make_url("/small")), interval=0.1))
+    await until(lambda: monitor.feeds() and monitor.feeds()[0]["rate"] is not None)
+    await asyncio.sleep(1.0)
+    (feed,) = monitor.feeds()
+    assert feed["name"].endswith("/small") and not feed["failing"]
+    assert 7 < feed["rate"] < 11  # asked for 10 a second
+    assert 0 < feed["took"] < 0.1

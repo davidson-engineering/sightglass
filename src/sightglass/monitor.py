@@ -158,6 +158,7 @@ class Monitor:
         self._task: asyncio.Task[None] | None = None
         self._outputs: list[Output] = []
         self._writers: list[Any] = []  # running sources that can write
+        self._feeds: list[Any] = []  # running sources' polling figures
         self._writing: set[asyncio.Task[None]] = set()
 
     # -- building -----------------------------------------------------------
@@ -448,6 +449,12 @@ class Monitor:
             for id in self._elements
         }
 
+    def feeds(self) -> list[dict[str, JSON]]:
+        """How each polling source is keeping up (polls a second, how long they
+        take), for the signals view; empty for sources that don't poll."""
+        now = asyncio.get_running_loop().time()
+        return [feed.to_json(now) for feed in self._feeds]
+
     def describe(self) -> list[dict[str, JSON]]:
         """Layout and element metadata, for building a display."""
         items: list[dict[str, JSON]] = []
@@ -468,8 +475,14 @@ class Monitor:
     async def consume(self, source: Source) -> None:
         """Apply every batch ``source`` produces, until it ends or is cancelled."""
         self._bind()
-        async for batch in source.updates():
-            self._apply_all(batch)
+        feeds = list(getattr(source, "feeds", ()))
+        self._feeds.extend(feeds)
+        try:
+            async for batch in source.updates():
+                self._apply_all(batch)
+        finally:
+            for feed in feeds:
+                self._feeds.remove(feed)
 
     async def run(
         self, *, sources: Iterable[Source] = (), outputs: Iterable[Output] = ()

@@ -411,7 +411,14 @@ class WebDashboard:
         charts keep moving with the server's clock."""
         version, now = monitor.version, monotonic()
         try:
-            await ws.send_json({"type": "snapshot", **monitor.signals.snapshot(now)})
+            await ws.send_json(
+                {
+                    "type": "snapshot",
+                    "feeds": monitor.feeds(),
+                    **monitor.signals.snapshot(now),
+                }
+            )
+            feeds_at = now
             sent = slot_at(now)  # the newest slot the page has
             while not ws.closed:
                 next_slot = (sent + 1) * RESOLUTION - monotonic()
@@ -423,14 +430,16 @@ class WebDashboard:
                 changed = monitor.signals.changes(version, sent, now)
                 version, slot = monitor.version, slot_at(now)
                 if changed or slot != sent:
-                    await ws.send_json(
-                        {
-                            "type": "update",
-                            "slot": slot,
-                            "from": sent,
-                            "signals": changed,
-                        }
-                    )
+                    message = {
+                        "type": "update",
+                        "slot": slot,
+                        "from": sent,
+                        "signals": changed,
+                    }
+                    if now - feeds_at >= 1:  # figures over seconds: not every slot
+                        message["feeds"] = monitor.feeds()
+                        feeds_at = now
+                    await ws.send_json(message)
                     sent = slot
                 await asyncio.sleep(1 / self.fps)
         except ConnectionError:

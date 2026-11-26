@@ -13,7 +13,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
-from ._poll import Failed, parse, poll, read_body
+from ._poll import Failed, Feed, parse, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,7 @@ class InfluxSource:
         self.prefix = prefix
         self.interval = interval
         self.timeout = timeout
+        self.feeds = [Feed(self.url)]
 
     async def updates(self) -> AsyncIterator[list[Update]]:
         queue: asyncio.Queue[Update] = asyncio.Queue()
@@ -108,7 +109,9 @@ class InfluxSource:
     async def _poll(
         self, session: aiohttp.ClientSession, queue: asyncio.Queue[Update]
     ) -> None:
-        await poll(lambda: self._fetch(session), self.interval, queue, self.url)
+        await poll(
+            lambda: self._fetch(session), self.interval, queue, self.url, self.feeds[0]
+        )
 
     async def _fetch(self, session: aiohttp.ClientSession) -> Update:
         try:

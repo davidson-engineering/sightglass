@@ -136,3 +136,12 @@ async def test_values_written_to_a_device_are_not_signals(monkeypatch):
     assert device.written == [{"dev.setpoint": 5}]
     assert "reading" in monitor.signals
     assert "dev.setpoint" not in monitor.signals  # its reading back will be
+
+
+def test_a_signal_counts_every_value_it_receives_repeats_included():
+    signals = Signals()
+    signals.record([("a", 1), ("b", 2)], at(0), 1)
+    signals.record([("a", 1)], at(1), 2)
+    signals.record([("a", 1)], at(2), 3)
+    counts = {id: s["count"] for id, s in signals.snapshot(at(2))["signals"].items()}
+    assert counts == {"a": 3, "b": 1}
