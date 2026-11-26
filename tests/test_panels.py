@@ -63,7 +63,8 @@ def test_every_type_reads_its_own_keys(tmp_path):
     assert (gauge.low, gauge.high) == (0.0, 10.0)
     assert (value.type, value.precision, value.units) == ("value", None, "")
     assert lamp.type == "lamp"
-    assert (series.type, series.ranges) == ("trend", (300, 60))  # the default type
+    assert series.type == "trend"  # the default type
+    assert [p.seconds for p in series.plots] == [300, 60]
 
 
 def test_only_a_trend_needs_history_and_only_the_others_need_live_values(tmp_path):
@@ -147,7 +148,7 @@ def test_a_bad_panel_says_what_is_wrong_in_one_line(tmp_path, text, message):
 def test_large_numbers_are_written_whole(tmp_path):
     text = (
         '[[panel]]\ntype = "gauge"\nid = "a"\nmax = 1234567\n'
-        '[[panel]]\nids = ["b"]\nranges = [1234567]\n'
+        '[[panel]]\nids = ["b"]\nrange = 1234567\n'
     )
     page = dashboard(tmp_path, text).page()
     assert "--max: 1234567" in page and 'data-seconds="1234567"' in page
@@ -180,3 +181,104 @@ def test_version_is_text_or_a_number(tmp_path):
         load(path)
     path.write_text("version = 2\n" + body, "utf-8")
     assert load(path).version == "2"
+
+
+def plots(panel):
+    return [(p.role, p.seconds, p.grow) for p in panel.plots]
+
+
+def trend(tmp_path, keys=""):
+    found = dashboard(tmp_path, f'[[panel]]\nids = ["a"]\n{keys}')
+    return found.panels[0]
+
+
+def test_a_trend_has_a_primary_and_a_secondary_plot_the_secondary_on_top(tmp_path):
+    assert plots(trend(tmp_path)) == [("secondary", 300, 0.5), ("primary", 60, 1)]
+
+
+def test_a_trend_is_set_with_its_ranges_ratio_and_order(tmp_path):
+    keys = (
+        "range = 120\nsecondary_range = 900\nsecondary_ratio = 0.25\n"
+        'first = "primary"\n'
+    )
+    assert plots(trend(tmp_path, keys)) == [
+        ("primary", 120, 1),
+        ("secondary", 900, 0.25),
+    ]
+    # the secondary may cover less time than the primary
+    assert plots(trend(tmp_path, "range = 300\nsecondary_range = 30")) == [
+        ("secondary", 30, 0.5),
+        ("primary", 300, 1),
+    ]
+
+
+def test_a_trend_may_have_no_secondary_plot(tmp_path):
+    panel = trend(tmp_path, "secondary = false\nrange = 90")
+    assert plots(panel) == [("primary", 90, 1)]
+    page = dashboard(tmp_path, '[[panel]]\nids = ["a"]\nsecondary = false').page()
+    assert page.count('class="plot ') == 1 and "secondary" not in page
+
+
+def test_history_covers_the_longest_plot_of_either_role(tmp_path):
+    found = dashboard(tmp_path, '[[panel]]\nids = ["a"]\nsecondary_range = 900')
+    assert found.history == 960
+    found = dashboard(tmp_path, '[[panel]]\nids = ["a"]\nsecondary = false')
+    assert found.history == 120  # the primary's minute, and a minute
+
+
+def test_the_page_draws_the_plots_in_the_order_and_ratio_asked_for(tmp_path):
+    keys = 'first = "primary"\nsecondary_ratio = 0.25'
+    page = dashboard(tmp_path, f'[[panel]]\nids = ["a"]\n{keys}').page()
+    assert page.index('plot primary" style="--grow: 1"') < page.index(
+        'plot secondary" style="--grow: 0.25"'
+    )
+
+
+@pytest.mark.parametrize(
+    ("keys", "message"),
+    [
+        ("secondary = 1", "secondary in .* true or false"),
+        ("range = 0", "range in .* above 0"),
+        ("secondary_range = -5", "secondary_range in .* above 0"),
+        ("secondary_ratio = 0", "secondary_ratio in .* above 0"),
+        ('secondary_ratio = "half"', "secondary_ratio in .* above 0"),
+        ('first = "top"', "first in .* secondary or primary, not 'top'"),
+        (
+            'secondary = false\nfirst = "primary"',
+            "first in .* go with secondary = true",
+        ),
+        (
+            "secondary = false\nsecondary_range = 60\nsecondary_ratio = 1",
+            "secondary_range, secondary_ratio in .* go with secondary = true",
+        ),
+        ("ranges = [300, 60]", "unknown 'ranges'"),
+    ],
+)
+def test_a_bad_trend_setting_says_what_is_wrong_in_one_line(tmp_path, keys, message):
+    with pytest.raises(ValueError, match=message) as error:
+        trend(tmp_path, keys)
+    assert "\n" not in str(error.value)
+
+
+def test_the_title_bar_is_at_the_top_by_default_and_can_go_to_the_bottom(tmp_path):
+    def page(setting):
+        path = tmp_path / "dashboard.toml"
+        path.write_text(f"{setting}{SOURCE}\n[[panel]]\nids = ['a']\n", "utf-8")
+        return load(path).page()
+
+    top = page("")
+    assert top.index("<header>") < top.index("<main>")
+    explicit = page('title_bar = "top"\n')
+    assert explicit.index("<header>") < explicit.index("<main>")
+    bottom = page('title_bar = "bottom"\n')
+    assert bottom.index("</main>") < bottom.index("<header>")
+    assert bottom.count("<header>") == 1  # moved, not copied
+    with pytest.raises(ValueError, match="title_bar must be top or bottom, not 'side'"):
+        page('title_bar = "side"\n')
+
+
+def test_the_page_has_no_legend_and_its_identity_is_in_the_title_bar(tmp_path):
+    page = dashboard(tmp_path, '[[panel]]\nids = ["a"]').page()
+    assert "top to bottom" not in page and "<span>" not in page
+    header = page[page.index("<header>") : page.index("</header>")]
+    assert 'class="identity"' in header

@@ -65,4 +65,5 @@ title = "Last 5 minutes"
 type = "trend"
 title = "Voltage, all cells"
 ids = ["cell.*.voltage"]
-ranges = [300, 60]
+range = 60
+secondary_range = 300

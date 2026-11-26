@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import TYPE_CHECKING
 
-from .panels import COLOURS, WEIGHT, draw, span
+from .panels import WEIGHT, draw
 
 if TYPE_CHECKING:
     from . import Dashboard, Section
@@ -26,16 +26,13 @@ def render(dashboard: Dashboard) -> str:
         f"started {dashboard.started}" if dashboard.started else "",
     ]
     meta = html.escape(" · ".join(part for part in identity if part))
-    shared = {p.ranges for p in dashboard.panels if p.type == "trend"}
-    key = ""
-    if len(shared) == 1:  # a legend only when every plot has the same ranges
-        parts = (
-            f'<b class="range-{i % COLOURS}">{span(r)}</b>'
-            for i, r in enumerate(next(iter(shared)))
-        )
-        key = f"<span>top to bottom: {' &middot; '.join(parts)}</span>"
+    bar = (
+        f"  <header>\n    <h1>{title}</h1>\n"
+        f'    <small class="identity">{meta}</small>\n  </header>\n'
+    )
     live = "" if any(p.live for p in dashboard.panels) else ' data-values="off"'
     sections = "\n".join(_section(s, dashboard.panel_width) for s in dashboard.sections)
+    above, below = (bar, "") if dashboard.title_bar == "top" else ("", bar)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -45,15 +42,10 @@ def render(dashboard: Dashboard) -> str:
   <link rel="stylesheet" href="/_sightglass/dashboard.css">
 </head>
 <body>
-  <header>
-    <h1>{title}</h1>
-    <small class="identity">{meta}</small>
-    {key}
-  </header>
-  <main>
+{above}  <main>
 {sections}
   </main>
-  <script src="/_sightglass/sightglass.js"{live}></script>
+{below}  <script src="/_sightglass/sightglass.js"{live}></script>
 </body>
 </html>
 """

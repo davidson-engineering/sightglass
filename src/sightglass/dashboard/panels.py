@@ -2,7 +2,8 @@
 
 A panel is one tile of the page. Its type says what it shows:
 
-``trend``  one or more ids plotted against time, a plot per range
+``trend``       one or more ids plotted against time: a primary plot, and
+                optionally a secondary one over another range
 ``value``       one id's current value as large text
 ``lamp``        one id as an on/off light
 ``gauge``       one id as a bar between a minimum and a maximum
@@ -17,23 +18,41 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..elements import Element, TextElement
 from ..formatting import TextFormat
-from ._config import only
+from ._config import number, only
 
 COMMON = {"type", "title", "each"}
 PANEL_KEYS = {
-    "trend": COMMON | {"ids", "ranges", "mode"},
+    "trend": COMMON
+    | {
+        "ids",
+        "range",
+        "secondary",
+        "secondary_range",
+        "secondary_ratio",
+        "first",
+        "mode",
+    },
     "value": COMMON | {"id", "units", "precision"},
     "lamp": COMMON | {"id"},
     "gauge": COMMON | {"id", "units", "precision", "min", "max"},
 }
 PANEL_TYPES = tuple(PANEL_KEYS)
 MODES = ("lines", "heatmap")
-COLOURS = 4  # range-0 ... range-3 in dashboard.css; more repeat
+FIRST = ("secondary", "primary")  # which plot of a trend is on top
 WEIGHT = {"trend": 3}  # how much of a section's height a panel's row asks for
+
+
+class Plot(NamedTuple):
+    """One plot of a trend: its role, the seconds it covers, and its height
+    relative to the primary's (1)."""
+
+    role: str  # "primary" or "secondary"
+    seconds: float
+    grow: float
 
 
 @dataclass(frozen=True)
@@ -44,12 +63,28 @@ class Panel:
     type: str
     title: str
     ids: tuple[str, ...]
-    ranges: tuple[float, ...] = ()  # trend: seconds, longest first
+    seconds: float = 60.0  # trend: what the primary plot covers
+    secondary_seconds: float | None = 300.0  # trend: the secondary's, if any
+    ratio: float = 0.5  # trend: the secondary's height over the primary's
+    first: str = "secondary"  # trend: which is on top, "secondary" or "primary"
     mode: str = "lines"  # trend: "lines" or "heatmap"
     units: str = ""  # value, gauge
     precision: int | None = None  # value, gauge: decimals shown
     low: float = 0.0  # gauge: the value at the bar's empty end
     high: float = 100.0  # gauge: and at its full end
+
+    @property
+    def plots(self) -> tuple[Plot, ...]:
+        """A trend's plots, from the top down; none for any other type."""
+        if self.type != "trend":
+            return ()
+        primary = Plot("primary", self.seconds, 1.0)
+        if self.secondary_seconds is None:
+            return (primary,)
+        secondary = Plot("secondary", self.secondary_seconds, self.ratio)
+        return (
+            (secondary, primary) if self.first == "secondary" else (primary, secondary)
+        )
 
     @property
     def live(self) -> bool:
@@ -107,22 +142,29 @@ def _trend(table: dict[str, Any], where: str) -> dict[str, Any]:
         or not all(isinstance(i, str) and i for i in ids)
     ):
         raise ValueError(f"{where} needs ids, a list of id patterns")
-    ranges = table.get("ranges", [300, 60])
-    if (
-        not isinstance(ranges, list)
-        or not ranges
-        or not all(
-            isinstance(r, int | float) and not isinstance(r, bool) and r > 0
-            for r in ranges
-        )
+    secondary = table.get("secondary", True)
+    if not isinstance(secondary, bool):
+        raise ValueError(f"secondary in {where} must be true or false")
+    if not secondary and (
+        extra := sorted({"secondary_range", "secondary_ratio", "first"} & table.keys())
     ):
-        raise ValueError(f"ranges in {where} must be a list of seconds above 0")
+        raise ValueError(f"{', '.join(extra)} in {where} go with secondary = true")
+    first = table.get("first", "secondary")
+    if first not in FIRST:
+        raise ValueError(
+            f"first in {where} must be {' or '.join(FIRST)}, not {first!r}"
+        )
     mode = table.get("mode", "lines")
     if mode not in MODES:
         raise ValueError(f"mode in {where} must be {' or '.join(MODES)}, not {mode!r}")
     return {
         "ids": tuple(ids),
-        "ranges": tuple(sorted(set(ranges), reverse=True)),
+        "seconds": float(number(table, "range", 60, where)),
+        "secondary_seconds": float(number(table, "secondary_range", 300, where))
+        if secondary
+        else None,
+        "ratio": float(number(table, "secondary_ratio", 0.5, where)),
+        "first": first,
         "mode": mode,
     }
 
@@ -184,15 +226,6 @@ PANELS = {
 # -- drawing -------------------------------------------------------------------
 
 
-def span(seconds: float) -> str:
-    """``300`` as "5 minutes", ``90`` as "90 seconds"."""
-    for unit, size in (("hour", 3600), ("minute", 60), ("second", 1)):
-        if seconds % size == 0 and (seconds >= size):
-            count = int(seconds // size)
-            return f"{count} {unit}" + ("" if count == 1 else "s")
-    return f"{seconds:.15g} seconds"
-
-
 def draw(panel: Panel) -> str:
     """The panel as HTML for ``sightglass.js`` and ``plot.js`` to fill in."""
     return DRAW[panel.type](panel)
@@ -210,17 +243,13 @@ def _frame(panel: Panel, body: str) -> str:
 
 
 def _draw_trend(panel: Panel) -> str:
-    plots = []
-    for i, seconds in enumerate(panel.ranges):
-        classes = f"plot range-{i % COLOURS}" + (
-            " last" if i == len(panel.ranges) - 1 else ""
-        )
-        mode = ' data-plot-mode="heatmap"' if panel.mode == "heatmap" else ""
-        ids = html.escape(" ".join(panel.ids), quote=True)
-        plots.append(
-            f'      <div class="{classes}" data-plot="{ids}"{mode} '
-            f'data-seconds="{seconds:.15g}"></div>'
-        )
+    mode = ' data-plot-mode="heatmap"' if panel.mode == "heatmap" else ""
+    ids = html.escape(" ".join(panel.ids), quote=True)
+    plots = [
+        f'      <div class="plot {plot.role}" style="--grow: {plot.grow:.15g}" '
+        f'data-plot="{ids}"{mode} data-seconds="{plot.seconds:.15g}"></div>'
+        for plot in panel.plots
+    ]
     return _frame(panel, "\n".join(plots))
 
 

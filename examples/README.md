@@ -206,7 +206,8 @@ source (`fake_*.py`), so each runs with nothing else installed, and
 file. To use the real source, copy the file and change its `[[source]]`.
 
 Each of five sensor arrays gets a `trend` panel with lines for its first
-row of cells over the last 5 minutes and, bigger, the last minute, on a dark
+row of cells: the last minute as the primary plot and, above it, half the
+height, the last 5 minutes as the secondary, on a dark
 page with large text for reading from across a room. The panels wrap like
 Grafana's as the screen changes size. [rest_grid/](rest_grid/dashboard.toml)
 starts a fake API ([rest_grid/fake_api.py](rest_grid/fake_api.py)).

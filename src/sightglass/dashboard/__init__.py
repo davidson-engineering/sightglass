@@ -16,12 +16,14 @@ a file and not a program::
     each = ["North", "South"]
     title = "{name}"
     ids = ["plant.{name}.value.*"]
-    ranges = [300, 60]
+    range = 60
+    secondary_range = 300
 
 A **source** is where values come from (``sources.py``). A **panel** is one
 tile of the page, of a **type** (``panels.py``): ``trend`` plots ids over
-time, ``value`` shows one id as large text, ``lamp`` as a light and ``gauge``
-as a bar. A **section** is a titled group of panels (``[[section]]`` with
+time (a primary plot and, optionally, a secondary one), ``value`` shows one
+id as large text, ``lamp`` as a light and ``gauge`` as a bar. A **section** is
+a titled group of panels (``[[section]]`` with
 ``[[section.panel]]`` inside); panels written at the top level are one
 untitled section. See :func:`load` for every key. Standard library only; the
 sources it builds need their extras (``rest`` needs aiohttp).
@@ -41,9 +43,9 @@ from ..monitor import Source
 from . import sources
 from ._config import number, only, tables
 from .page import render
-from .panels import Panel, build, span
+from .panels import Panel, build
 
-__all__ = ["Dashboard", "Panel", "Section", "load", "render", "span"]
+__all__ = ["Dashboard", "Panel", "Section", "load", "render"]
 
 TOP_KEYS = {
     "title",
@@ -51,11 +53,13 @@ TOP_KEYS = {
     "history",
     "max_elements",
     "panel_width",
+    "title_bar",
     "source",
     "section",
     "panel",
 }
 SECTION_KEYS = {"title", "panel"}
+TITLE_BARS = ("top", "bottom")
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,7 @@ class Dashboard:
     sources: list[Source] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
     version: str = ""  # the dashboard's own, from the file
+    title_bar: str = "top"  # where the title bar goes: "top" or "bottom"
     config: str = ""  # the file's name
     digest: str = ""  # a short fingerprint of the file's text: it changes when it does
     started: str = ""  # when this instance was loaded
@@ -111,7 +116,9 @@ def load(path: str | Path) -> Dashboard:
     Top level: ``title``, ``version`` (a label for this dashboard's own version,
     shown beside the title), ``history`` (seconds of values to keep for plots;
     default: the longest range and a minute), ``max_elements`` (default 2000),
-    ``panel_width`` (least pixels wide a panel is; default 520).
+    ``panel_width`` (least pixels wide a panel is; default 520), ``title_bar``
+    (``"top"``, the default, or ``"bottom"``: where the title and what
+    identifies this instance go).
 
     ``[[source]]``, of a ``type``: ``rest`` (``url`` (required), ``prefix``,
     ``select``, ``key``, ``interval``, ``timeout``, ``accept`` and ``headers``;
@@ -125,8 +132,12 @@ def load(path: str | Path) -> Dashboard:
     ``[[panel]]``, of a ``type``, each with a ``title`` and ``each`` (a list
     of names that makes one panel per name, with ``{name}`` in the title and
     ids replaced by it): ``trend`` (the default: ``ids``, id patterns
-    with ``*`` for any characters; ``ranges``, seconds, default ``[300, 60]``;
-    ``mode``, ``"lines"`` or ``"heatmap"``), ``value`` (``id``, ``units``,
+    with ``*`` for any characters; ``range``, the primary plot's seconds,
+    default 60; ``secondary``, whether there is a secondary plot, default
+    true; ``secondary_range``, its seconds, default 300; ``secondary_ratio``,
+    its height over the primary's, default 0.5; ``first``, which is on top,
+    ``"secondary"`` (the default) or ``"primary"``; ``mode``, ``"lines"`` or
+    ``"heatmap"``), ``value`` (``id``, ``units``,
     ``precision``), ``lamp`` (``id``) and ``gauge`` (``id``, ``units``,
     ``precision``, ``min``, ``max``). Panels go at the top level or in
     ``[[section]]`` tables with a ``title``, as ``[[section.panel]]``.
@@ -160,7 +171,7 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
     ]
     if not built:
         raise ValueError("needs at least one [[source]]")
-    longest = max((r for p in panels for r in p.ranges), default=0)
+    longest = max((plot.seconds for p in panels for plot in p.plots), default=0)
     history = number(data, "history", longest + 60, "the config")
     if history < longest:
         raise ValueError(f"history is {history:g} s but a panel plots {longest:g} s")
@@ -174,9 +185,21 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
         or not isinstance(version, str | int | float)
     ):
         raise ValueError("title and version must be text")
+    title_bar = data.get("title_bar", "top")
+    if title_bar not in TITLE_BARS:
+        raise ValueError(
+            f"title_bar must be {' or '.join(TITLE_BARS)}, not {title_bar!r}"
+        )
     _one_format_each(panels)
     return Dashboard(
-        title, history, max_elements, panel_width, built, found, version=str(version)
+        title,
+        history,
+        max_elements,
+        panel_width,
+        built,
+        found,
+        version=str(version),
+        title_bar=title_bar,
     )
 
 

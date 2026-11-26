@@ -320,7 +320,8 @@ interval = 0.5                                 # seconds between polls
 each = ["North", "South"]
 title = "{name}"
 ids = ["plant.{name}.value.*"]                 # * stands for any characters
-ranges = [300, 60]                             # seconds: 5 minutes, then 1
+range = 60                                     # the primary plot: the last minute
+secondary_range = 300                          # the secondary, above it: 5 minutes
 ```
 
 The words, which the code, the config and these docs all use:
@@ -332,7 +333,7 @@ The words, which the code, the config and these docs all use:
 | **id** | a value's name, such as `plant.North.value.0.1`; sources make them and panels show them |
 | **section** | a titled group of panels: `[[section]]`, with its panels as `[[section.panel]]` |
 | **panel** | one tile of the page: a `[[panel]]` of a `type` (`trend`, `value`, `lamp`, `gauge`) |
-| **plot** | what a `trend` panel draws: one per range, from the dashboard's history |
+| **plot** | what a `trend` panel draws, from the dashboard's history: a **primary** plot and, optionally, a **secondary** one |
 | **range** | the seconds of history a plot covers |
 | **element** | the monitor's own display model (`TextElement`, `RangeBar`, ...) that hand-written pages bind; a panel is not one, but a `value` panel with `precision` declares one |
 
@@ -349,10 +350,25 @@ level, with no `[[section]]`, are one section without a heading.
 
 | `type` | Shows | Keys |
 | --- | --- | --- |
-| `trend` (the default) | `ids` against time: a plot per range, the longest at the top and the shortest biggest | `ids` (id patterns, `*` for any characters), `ranges` (seconds, default `[300, 60]`), `mode` (`"lines"`, or `"heatmap"`, a row per id, for hundreds of ids) |
+| `trend` (the default) | `ids` against time: a primary plot and, optionally, a secondary one over another range | `ids` (id patterns, `*` for any characters), `mode` (`"lines"`, or `"heatmap"`, a row per id, for hundreds of ids), and the plots' settings below |
 | `value` | one id's current value as large text | `id`, `units`, `precision` (decimals) |
 | `lamp` | one id as a light: on for `true`, non-zero and `"on"`, off otherwise | `id` |
 | `gauge` | one id as a bar between a minimum and a maximum, with the value above it | `id`, `min` (default 0), `max` (default 100), `units`, `precision` |
+
+A `trend`'s plots are set by:
+
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `range` | seconds of history the primary plot covers | `60` |
+| `secondary` | whether there is a secondary plot (`true` or `false`) | `true` |
+| `secondary_range` | seconds the secondary plot covers | `300` |
+| `secondary_ratio` | the secondary plot's height over the primary's | `0.5` |
+| `first` | which plot is on top, `"secondary"` or `"primary"` | `"secondary"` |
+
+The primary is the plot to read; the secondary is context, drawn smaller. With
+`secondary = false` the other three secondary settings are an error. A plot's
+colour follows its role, so the primary is yellow and the secondary blue
+wherever they are placed.
 
 Two panels may show the same id, but not to different `precision`s (the monitor
 formats an id once). Every panel also takes `title`, and `each`: a list of names that makes one
@@ -384,7 +400,8 @@ title = "Last 5 minutes"
 
 [[section.panel]]
 ids = ["plc.pressure"]
-ranges = [300]
+range = 300
+secondary = false      # just the one plot
 ```
 
 The dashboard keeps history only for the ids its `trend` panels plot. A
@@ -395,7 +412,7 @@ page, so keep those dashboards to sources with a few hundred ids.
 
 | Key | Meaning |
 | --- | --- |
-| `title`, `version`, `history`, `max_elements`, `panel_width` | the page heading; a label for this dashboard's own version, shown beside the title; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a panel |
+| `title`, `version`, `history`, `max_elements`, `panel_width`, `title_bar` | the page heading; a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a panel; where the title bar goes, `"top"` (the default) or `"bottom"` |
 | `[[source]]` | one per source, of a `type`: `rest`, `ads`, `zmq`, `serial` or `influxdb`; their keys are below |
 | `[[section]]`, `[[panel]]` | as above |
 

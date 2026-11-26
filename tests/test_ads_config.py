@@ -31,7 +31,8 @@ interval = 0.02
 each = ["fPressure"]
 title = "{name}"
 ids = ["GVL.{name}"]
-ranges = [60, 10]
+range = 10
+secondary_range = 60
 """
 
 

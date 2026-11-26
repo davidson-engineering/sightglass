@@ -499,7 +499,8 @@ url = "http://127.0.0.1:1/x"
 each = ["a", "b", "c", "d", "e"]
 title = "{name}"
 ids = ["p.{name}"]
-ranges = [30, 10]
+range = 10
+secondary_range = 30
 """
     )
     monitor = Monitor(history=60)
@@ -752,7 +753,8 @@ title = "Last minute"
 [[section.panel]]
 title = "Pressure"
 ids = ["p.pressure"]
-ranges = [60]
+range = 60
+secondary = false
 """
     )
     dashboard = load(config)
@@ -789,3 +791,46 @@ ranges = [60]
     await expect(reading).to_have_text("")
     await expect(light).to_have_attribute("data-state", "off")
     assert await fill() == 0  # applied with the reading
+
+
+async def test_a_trends_plots_follow_their_order_and_ratio_and_the_title_bar_moves(
+    page, serve, tmp_path
+):
+    """The secondary plot is half the primary's height and above it by default;
+    first = "primary" swaps them; the identity is at the right of the title bar,
+    which title_bar = "bottom" puts under the panels."""
+    from sightglass.dashboard import load
+
+    async def laid_out(top_level: str, panel: str):
+        config = tmp_path / "dashboard.toml"
+        config.write_text(
+            f'{top_level}[[source]]\nurl = "http://127.0.0.1:1/x"\n'
+            f'[[panel]]\nids = ["p.a"]\n{panel}'
+        )
+        monitor = Monitor(history=400)
+        monitor.update({"p.a": 1.5})
+        await page.set_viewport_size({"width": 1920, "height": 1080})
+        await page.goto(serve(None, monitor, html=load(config).page()))
+        await expect(page.locator("[data-plot]").first).to_have_attribute(
+            "data-plot-signals", "1"
+        )
+        return await page.evaluate(
+            "(() => { const box = (s) => document.querySelector(s)"
+            ".getBoundingClientRect();"
+            " const [a, b, h, i] = ['.secondary', '.primary', 'header', '.identity']"
+            ".map(box);"
+            " return {secondary: [a.top, a.height], primary: [b.top, b.height],"
+            " header: [h.top, h.bottom], identity: [i.left, i.right],"
+            " width: document.documentElement.clientWidth,"
+            " main: document.querySelector('main').getBoundingClientRect().top} })()"
+        )
+
+    found = await laid_out("", "")
+    assert found["secondary"][0] < found["primary"][0]  # secondary on top
+    assert abs(found["secondary"][1] / found["primary"][1] - 0.5) < 0.02
+    assert found["header"][1] <= found["main"] + 1  # the title bar is above
+    assert found["identity"][1] > found["width"] - 40  # identity at the right
+
+    found = await laid_out('title_bar = "bottom"\n', 'first = "primary"\n')
+    assert found["primary"][0] < found["secondary"][0]  # primary on top
+    assert found["header"][0] > found["primary"][0]  # the title bar is below
