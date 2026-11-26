@@ -48,7 +48,7 @@ a screen function of its own ([screen.py](https://github.com/davidson-engineerin
 Requires Python 3.11+.
 
 ```bash
-pip install "sightglass[web]"        # add serial, zmq, ads, or use [all]
+pip install "sightglass[web]"        # add serial, zmq, ads, rest, or use [all]
 ```
 
 Try it: `sightglass --demo launch --open` runs the page above;
@@ -93,6 +93,7 @@ curl http://127.0.0.1:8080/values     # what the dashboard shows, as JSON
 sightglass --serial auto --csv temperature,humidity
 sightglass --zmq tcp://localhost:5556
 sightglass --ads 5.12.34.56.1.1 --vars 'MAIN.*'    # a Beckhoff PLC
+sightglass --rest http://localhost:8000/metrics    # a JSON REST API, polled
 ```
 
 `sightglass --help` lists every option, including `--terminal` to draw in the
@@ -191,6 +192,7 @@ monitor.serve(sources=[device])
 | `ZmqSource(endpoint, pattern="sub")` | ZeroMQ PUB/SUB (a publisher that binds `endpoint`) |
 | `ZmqSource(endpoint, pattern="pull")` | ZeroMQ PUSH/PULL: binds `endpoint`; unlike PUB/SUB, nothing sent before the monitor starts is lost |
 | `AdsSource(target, variables)` | a Beckhoff TwinCAT PLC over ADS ([below](#beckhoff-twincat-plcs-ads)); can also write to it |
+| `RestSource(*urls, interval=1)` | JSON REST endpoints, polled with GET (needs `aiohttp`, the `rest` extra); nested objects become dotted ids, lists of objects are keyed by their `id` field; `null` is invalid data, so that id is blanked (a gap in a plot) rather than left showing its last value, as is every id of an endpoint that can't be reached; `Endpoint(url, prefix=, select=, key=, interval=, accept=)` tunes one; `headers={...}` for an API key or bearer token; a down endpoint is logged once and retried |
 | `StdinSource()` | piped standard input, as `sightglass` does |
 | `SimulatedSource(fn, rate)` | `fn(seconds)` called `rate` times a second, for demos and tests |
 

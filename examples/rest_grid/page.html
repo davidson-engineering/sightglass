@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sensor grids</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      /* Bahnschrift is a DIN-style face made for signs and instrument panels:
+         heavy, even digits that stay readable from far away. It ships with
+         Windows 10 and later; other systems get the next one that exists. */
+      --font: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      /* A plot draws its labels in one weight, so name a heavier face. */
+      --font-plot: "Bahnschrift SemiBold", "Bahnschrift", "DIN Alternate", "Segoe UI Semibold", "Segoe UI", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      flex-direction: column;
+      padding: 1vmin 1.2vmin;
+      gap: 1vmin;
+      background: #080b10;
+      color: #f1f5f9;
+      font-family: var(--font);
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;           /* a wall display never scrolls */
+    }
+    header { display: flex; align-items: baseline; gap: 2vw; }
+    h1 { margin: 0; font-size: clamp(22px, 2.8vmin, 60px); font-weight: 700; letter-spacing: 0.01em; }
+    header span { color: #94a3b8; font-size: clamp(16px, 1.9vmin, 40px); }
+    header b { font-weight: 700; }
+    /* Cards wrap like Grafana's panels: each is at least --card-width wide, so
+       the number per row follows the screen's width, and the cards of the last
+       row grow to share what is left. Rows share the height equally. */
+    .grid {
+      --card-width: 520px;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1vmin;
+      overflow-y: auto;           /* only if the cards can't fit at their least height */
+    }
+    section {
+      flex: 1 1 var(--card-width);
+      min-width: 0;
+      min-height: 180px;   /* rows share the rest of the height equally */
+      display: flex;
+      flex-direction: column;
+      gap: 0.6vmin;
+      padding: 1vmin 1.2vmin;
+      background: #121820;
+      border: 1px solid #2a3544;
+      border-radius: 8px;
+    }
+    h2 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-height: 1.1; letter-spacing: 0.01em; }
+    /* The long range is short; the 1 minute plot gets most of the card. A zero
+       base keeps a plot's canvas from setting its row's height. */
+    .plot { min-height: 0; overflow: hidden; font-size: clamp(14px, 1.9vmin, 40px); font-family: var(--font-plot); }
+    .long  { flex: 2 1 0px; color: #4fd1ff; }
+    .lines { flex: 3 1 0px; color: #ffd166; }
+    .plot[data-plot-error] { color: #f87171; }
+    .key-long { color: #4fd1ff; }
+    .key-lines { color: #ffd166; }
+  </style>
+</head>
+<!-- Made to be read from across a room: one screen, no scrolling, text sized
+     from the screen's height (vmin). Each array has lines for the first row
+     of cells: its last 5 minutes on top, and its last minute below, bigger.
+     "grid." is the prefix dashboard.py gives the endpoint; edit the names to
+     match your arrays. -->
+<body>
+  <header>
+    <h1>Sensor grids</h1>
+    <span><b class="key-long">Top: last 5 minutes</b> &nbsp;&middot;&nbsp; <b class="key-lines">Bottom: last minute</b></span>
+  </header>
+  <div class="grid">
+    <section>
+      <h2>North</h2>
+      <div class="plot long" data-plot="grid.North.value.0.*" data-seconds="300"></div>
+      <div class="plot lines" data-plot="grid.North.value.0.*" data-seconds="60"></div>
+    </section>
+    <section>
+      <h2>South</h2>
+      <div class="plot long" data-plot="grid.South.value.0.*" data-seconds="300"></div>
+      <div class="plot lines" data-plot="grid.South.value.0.*" data-seconds="60"></div>
+    </section>
+    <section>
+      <h2>East</h2>
+      <div class="plot long" data-plot="grid.East.value.0.*" data-seconds="300"></div>
+      <div class="plot lines" data-plot="grid.East.value.0.*" data-seconds="60"></div>
+    </section>
+    <section>
+      <h2>West</h2>
+      <div class="plot long" data-plot="grid.West.value.0.*" data-seconds="300"></div>
+      <div class="plot lines" data-plot="grid.West.value.0.*" data-seconds="60"></div>
+    </section>
+    <section>
+      <h2>Roof</h2>
+      <div class="plot long" data-plot="grid.Roof.value.0.*" data-seconds="300"></div>
+      <div class="plot lines" data-plot="grid.Roof.value.0.*" data-seconds="60"></div>
+    </section>
+  </div>
+  <script src="/_sightglass/sightglass.js"></script>
+</body>
+</html>

@@ -448,6 +448,80 @@ async def test_plot_draws_ids_against_time_and_keeps_up(page, serve):
     await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 50")
 
 
+# Records what a canvas does, in order, in window.ops.
+RECORD_DRAWING = """
+window.ops = [];
+const proto = CanvasRenderingContext2D.prototype;
+for (const name of ["stroke", "strokeText", "fillText"]) {
+  const original = proto[name];
+  proto[name] = function (...args) {
+    window.ops.push(name === "stroke" ? "stroke" : `${name}:${args[0]}`);
+    return original.apply(this, args);
+  };
+}
+"""
+
+
+async def test_plot_draws_lowest_and_highest_value_over_the_lines(page, serve):
+    """The labels come after the lines, each outlined, so no line hides them."""
+    await page.add_init_script(RECORD_DRAWING)
+    monitor = Monitor(history=60)
+    monitor.update({"a": 1, "b": 3})
+    plot = (
+        '<div id="plot" data-plot="a b" data-seconds="10"'
+        ' style="width: 400px; height: 200px; background: black"></div>'
+    )
+    await page.goto(serve(plot, monitor))
+    await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 3")
+    ops = await page.evaluate("window.ops")
+    after_lines = ops[len(ops) - ops[::-1].index("stroke") :]
+    assert after_lines == [
+        "strokeText:3",
+        "fillText:3",
+        "strokeText:1",
+        "fillText:1",
+    ]
+
+
+# Records the text each plot draws, by the id of its element, in window.labels.
+RECORD_LABELS = """
+window.labels = {};
+const fillText = CanvasRenderingContext2D.prototype.fillText;
+CanvasRenderingContext2D.prototype.fillText = function (text, ...rest) {
+  const id = this.canvas.parentElement?.id;
+  if (id) (window.labels[id] ??= new Set()).add(text);
+  return fillText.call(this, text, ...rest);
+};
+"""
+
+
+async def test_plot_time_axis_uses_one_unit_for_all_its_labels(page, serve):
+    """A wide plot of 5 minutes has labels every 30 s: all in seconds, never
+    "-5 min" next to "-270 s". A narrower one, labelled every minute, is all in
+    minutes."""
+    await page.add_init_script(RECORD_LABELS)
+    monitor = Monitor(history=300)
+    monitor.set("a", 1)
+    plots = "".join(
+        f'<div id="{name}" data-plot="a" data-seconds="300"'
+        f' style="width: {width}px; height: 200px; font: 12px sans-serif"></div>'
+        for name, width in [("wide", 1000), ("narrow", 400)]
+    )
+    await page.goto(serve(plots, monitor))
+    for name in ("wide", "narrow"):
+        await expect(page.locator(f"#{name}")).to_have_attribute(
+            "data-plot-signals", "1"
+        )
+    await page.wait_for_timeout(300)
+    labels = await page.evaluate(
+        "Object.fromEntries(Object.entries(window.labels).map(([k, v]) => [k, [...v]]))"
+    )
+    wide = {t for t in labels["wide"] if t != "now" and t[0] == "−"}
+    narrow = {t for t in labels["narrow"] if t != "now" and t[0] == "−"}
+    assert "−270 s" in wide and not any("min" in t for t in wide), wide
+    assert "−1 min" in narrow and not any(t.endswith(" s") for t in narrow), narrow
+
+
 # For each third of a heat map's cells (its three rows), how many pixels are
 # drawn at full strength, and how many at all.
 HEAT_ROWS = """el => {
