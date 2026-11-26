@@ -8,6 +8,11 @@
 //   <div data-bind="q.ratio" data-mode="var"></div>                 CSS variable --value: the number
 //                                                                   (unset if not a number; true = 1)
 //
+// A page that only plots (data-plot, which reads /history) and binds nothing
+// can say so on the script tag, <script src="/_sightglass/sightglass.js"
+// data-values="off">, and the page then opens no live connection: the
+// dashboard doesn't push it every value it never shows.
+//
 // "var" lets CSS draw anything from a number: a needle rotated by
 // calc(var(--value) * 270deg), a tank filled to calc(var(--value) * 100%).
 //
@@ -48,6 +53,7 @@
   "use strict";
 
   const root = document.documentElement;
+  const valuesOff = document.currentScript?.dataset.values === "off";
   let bindings = new Map();
   let watched = []; // bound elements with data-stale-after
   const arrived = new Map(); // bound key -> Date.now() when its value last arrived
@@ -265,5 +271,6 @@
   showSwitches();
   startPlots();
   setInterval(tick, 1000);
-  connect(250);
+  if (valuesOff) root.dataset.connection = "off";
+  else connect(250);
 })();

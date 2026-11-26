@@ -313,9 +313,13 @@ def config_build(
             "(sources, title, history and limits are set in the file)"
         )
     from . import WebDashboard
+    from .history import History
 
     dashboard = load(args.config)
-    monitor = Monitor(max_elements=dashboard.max_elements, history=dashboard.history)
+    monitor = Monitor(max_elements=dashboard.max_elements)
+    # Only what the panels plot: the rest of a source's ids would cost memory
+    # and time (8 bytes a slot each) for plots that never draw them.
+    monitor.history = History(dashboard.history, only=dashboard.plotted())
     web = WebDashboard(
         html=dashboard.page(),
         host=args.host,

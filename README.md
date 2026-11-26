@@ -327,7 +327,9 @@ wrap like Grafana's panels (each at least `card_width` pixels wide, 520 by
 default, so the count per row follows the screen), the last row's cards grow to
 fill it, and rows share the height. Each card plots its ids over every range,
 the longest at the top and the shortest biggest. It is one screen with nothing
-to scroll.
+to scroll. The dashboard keeps history only for the ids its panels plot, and its
+page opens no live-values connection, so a source with thousands of ids costs
+little more than polling it.
 
 | Key | Meaning |
 | --- | --- |

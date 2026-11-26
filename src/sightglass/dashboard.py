@@ -92,6 +92,10 @@ class Dashboard:
     def page(self) -> str:
         return render(self)
 
+    def plotted(self) -> list[str]:
+        """Every id pattern a panel plots: all the history the page needs."""
+        return sorted({pattern for panel in self.panels for pattern in panel.ids})
+
 
 def load(path: str | Path) -> Dashboard:
     """Read a config file. Raises :class:`ValueError` with a one-line reason for
@@ -353,7 +357,7 @@ def render(dashboard: Dashboard) -> str:
   <div class="grid" style="--card-width: {dashboard.card_width}px">
 {chr(10).join(cards)}
   </div>
-  <script src="/_sightglass/sightglass.js"></script>
+  <script src="/_sightglass/sightglass.js" data-values="off"></script>
 </body>
 </html>
 """

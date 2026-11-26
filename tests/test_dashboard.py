@@ -211,6 +211,28 @@ def test_the_cli_builds_the_dashboard_from_the_file(tmp_path):
     assert len(sources) == 1 and isinstance(sources[0], RestSource)
 
 
+def test_a_config_dashboard_keeps_history_only_for_what_it_plots(tmp_path):
+    text = """
+[[source]]
+url = "http://127.0.0.1:1/x"
+[[panel]]
+each = ["N"]
+ids = ["p.{name}.value.0.*", "p.level"]
+"""
+    path = write(tmp_path, text)
+    assert load(path).plotted() == ["p.N.value.0.*", "p.level"]
+    monitor, _, _ = build(parser().parse_args(["--config", str(path)]))
+    monitor.update(
+        {
+            "p.N.value.0.1": 1.0,
+            "p.N.value.1.1": 2.0,
+            "p.N.flags.0.1": 3.0,
+            "p.level": 4.0,
+        }
+    )
+    assert sorted(monitor.history._tracks) == ["p.N.value.0.1", "p.level"]
+
+
 @pytest.mark.parametrize(
     "argv",
     [
