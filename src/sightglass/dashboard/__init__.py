@@ -127,7 +127,7 @@ def load(path: str | Path) -> Dashboard:
     and ``influxdb`` (see :class:`~sightglass.sources.influx.InfluxSource`).
     Any text in a source may hold ``${NAME}`` or ``${NAME:-default}``,
     replaced by that environment variable, so a secret such as a token
-    never has to be in the file.
+    never has to be in the file; ``$${`` writes a literal ``${``.
 
     ``[[panel]]``, of a ``type``, each with a ``title`` and ``each`` (a list
     of names that makes one panel per name, with ``{name}`` in the title and
@@ -174,7 +174,9 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
     longest = max((plot.seconds for p in panels for plot in p.plots), default=0)
     history = number(data, "history", longest + 60, "the config")
     if history < longest:
-        raise ValueError(f"history is {history:g} s but a panel plots {longest:g} s")
+        raise ValueError(
+            f"history is {history:.15g} s but a panel plots {longest:.15g} s"
+        )
     max_elements = int(number(data, "max_elements", 2000, "the config"))
     panel_width = int(number(data, "panel_width", 520, "the config"))
     title = data.get("title", "Dashboard")

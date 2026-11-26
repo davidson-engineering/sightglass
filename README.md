@@ -371,7 +371,7 @@ colour follows its role, so the primary is yellow and the secondary blue
 wherever they are placed.
 
 Two panels may show the same id, but not to different `precision`s (the monitor
-formats an id once). Every panel also takes `title`, and `each`: a list of names that makes one
+formats an id once; a panel that sets none shows it as the other does). Every panel also takes `title`, and `each`: a list of names that makes one
 panel per name, with `{name}` replaced in the title and in `id` or `ids`. A
 `trend` takes patterns, because it plots many; the others take one exact
 `id`. An invalid value (`null` from a REST API, a series InfluxDB has stopped

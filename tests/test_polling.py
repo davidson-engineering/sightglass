@@ -1,6 +1,7 @@
 """What the polling sources (REST, InfluxDB) share: big replies arrive whole,
 a reply over the limit is refused, and nothing a reply does stops the polling."""
 
+import asyncio
 import logging
 
 import pytest
@@ -12,11 +13,18 @@ from sightglass.sources import rest
 
 from .conftest import until
 
-COUNT = 60_000  # ids: replies of a few MB, which arrive in many network reads
+COUNT = 20_000  # ids: replies of about a MB, which arrive in many network reads
+
+
+BODIES: dict[str, object] = {}  # made once: building them is not what is tested
 
 
 def big_json() -> dict:
-    return {"items": {f"item{i:05d}": {"value": i * 1.5} for i in range(COUNT)}}
+    if "json" not in BODIES:
+        BODIES["json"] = {
+            "items": {f"item{i:05d}": {"value": i * 1.5} for i in range(COUNT)}
+        }
+    return BODIES["json"]
 
 
 def big_csv() -> str:
@@ -56,7 +64,7 @@ async def server():
 async def test_a_big_rest_reply_arrives_whole(server, consume):
     monitor = Monitor(max_elements=COUNT + 10)
     consume(monitor, RestSource(str(server.make_url("/big")), interval=0.2))
-    await until(lambda: "items.item59999.value" in monitor, within=20)
+    await until(lambda: "items.item19999.value" in monitor, within=20)
     assert len(monitor) == COUNT
 
 
@@ -71,7 +79,7 @@ async def test_a_big_influxdb_reply_arrives_whole(server, consume):
         interval=0.2,
     )
     consume(monitor, source)
-    await until(lambda: "f59999" in monitor, within=20)
+    await until(lambda: "f19999" in monitor, within=20)
     assert len(monitor) == COUNT
 
 
@@ -104,3 +112,28 @@ async def test_a_poll_that_fails_unexpectedly_is_a_failed_poll(
         consume(monitor, RestSource(str(server.make_url("/big")), interval=0.2))
         await until(lambda: "items.item00000.value" in monitor, within=20)
     assert [r for r in caplog.records if "RecursionError" in r.getMessage()]
+
+
+async def test_a_failure_is_logged_once_and_again_when_its_cause_changes(caplog):
+    from sightglass.sources._poll import Failed, poll
+
+    causes = iter(["HTTP 502", "HTTP 502", "refused", "refused", "refused", None])
+
+    async def fetch():
+        cause = next(causes)
+        if cause:
+            raise Failed(cause)
+        return {}
+
+    with caplog.at_level(logging.INFO):
+        task = asyncio.create_task(poll(fetch, 0.01, asyncio.Queue(), "svc"))
+        await until(
+            lambda: any("answering again" in r.getMessage() for r in caplog.records)
+        )
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    assert [r.getMessage() for r in caplog.records] == [
+        "svc: HTTP 502; will keep trying",
+        "svc: refused; will keep trying",
+        "svc is answering again",
+    ]

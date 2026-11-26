@@ -42,10 +42,12 @@ async def poll(
 
     An id that was valid and is now ``None``, missing, or from a ``fetch`` that
     failed, is queued as :data:`BLANK` once, so nothing stale stays on show. A
-    failure is logged when it starts and when it ends, not on every poll; any
+    failure is logged when it starts (and again if its cause changes) and when
+    it ends, not on every poll; any
     exception counts as one, so nothing a reply holds can end the polling."""
     loop = asyncio.get_running_loop()
     down = False
+    logged = ""  # the failure last warned about
     showing: set[str] = set()  # the ids with a valid value on display
     due = loop.time()
     while True:
@@ -58,13 +60,15 @@ async def poll(
             reason = f"{type(error).__name__}: {error}"
         if reason is not None:
             reply = {}
-            if not down:
+            if reason != logged:  # a new cause is worth a line too
                 logger.warning("%s: %s; will keep trying", name, reason)
+                logged = reason
             down = True
         else:
             if down:
                 logger.info("%s is answering again", name)
             down = False
+            logged = ""
         valid = {id: value for id, value in reply.items() if value is not None}
         update = {**valid, **dict.fromkeys(showing - valid.keys(), BLANK)}
         showing = set(valid)
