@@ -135,6 +135,7 @@ def test_a_token_in_an_influxdb_source_can_come_from_the_environment(
         'fields = ["v1", "v2"]\ntags = { site = "north" }\nwindow = 30\n'
         'id_from = ["_measurement", "unit", "_field"]\nprefix = "p"\ninterval = 0.5'
     )
+    monkeypatch.delenv("INFLUX_TOKEN", raising=False)  # as in a shell without one
     with pytest.raises(ValueError, match="INFLUX_TOKEN is not set"):
         sources(tmp_path, text)
     monkeypatch.setenv("INFLUX_TOKEN", "s3cret")
@@ -222,7 +223,8 @@ async def test_influxdb_values_reach_the_dashboard_and_go_blank_when_they_stop(
     async def query(request):
         seen["auth"] = request.headers["Authorization"]
         seen["org"] = request.query["org"]
-        seen["flux"] = (await request.read()).decode()
+        seen["request"] = await request.json()
+        seen["flux"] = seen["request"]["query"]
         return web.Response(
             text=replies[0], content_type="application/csv", charset="utf-8"
         )
@@ -241,6 +243,8 @@ async def test_influxdb_values_reach_the_dashboard_and_go_blank_when_they_stop(
         await until(lambda: "cell.v1" in monitor)
         assert seen["auth"] == "Token s3cret" and seen["org"] == "gf"
         assert 'from(bucket: "plant")' in seen["flux"]
+        # the server is asked for the columns' types: left alone, it sends none
+        assert seen["request"]["dialect"]["annotations"] == ["datatype"]
         assert monitor["cell.v1"].value == 1.5
         assert "cell.idle" not in monitor  # never valid: no display
         replies[0] = ""  # the series stop having points in the window
@@ -305,3 +309,22 @@ def test_a_dollar_brace_in_a_flux_query_can_be_escaped(tmp_path, monkeypatch):
     assert source.query == (
         'from(bucket: "plant") |> map(fn: (r) => ({r with s: "${r._field}"}))'
     )
+
+
+def test_values_are_typed_by_their_text_when_the_server_sends_no_annotations():
+    """InfluxDB 2.x sends no #datatype rows unless the request asks for them."""
+    text = (
+        ",result,table,_time,_value,_field,_measurement\r\n"
+        ",,0,2026-01-01T00:00:00Z,3.5,voltage,cell\r\n"
+        ",,1,2026-01-01T00:00:00Z,7,count,cell\r\n"
+        ",,2,2026-01-01T00:00:00Z,true,ok,cell\r\n"
+        ",,3,2026-01-01T00:00:00Z,idle,state,cell\r\n"
+        ",,4,2026-01-01T00:00:00Z,,gap,cell\r\n"
+    )
+    assert rows(text, ("_measurement", "_field")) == {
+        "cell.voltage": 3.5,
+        "cell.count": 7,
+        "cell.ok": True,
+        "cell.state": "idle",
+        "cell.gap": None,
+    }

@@ -84,6 +84,7 @@ async def test_the_influxdb_example_shows_what_its_fake_server_makes(monkeypatch
     server = TestServer(fake.app())
     await server.start_server()
     monkeypatch.setenv("INFLUX_URL", str(server.make_url("")).rstrip("/"))
+    monkeypatch.delenv("INFLUX_TOKEN", raising=False)  # the file's demo token
     monitor = started(folder / "dashboard.toml")
     try:
         await until(lambda: "cell.C.ok" in monitor, within=10)

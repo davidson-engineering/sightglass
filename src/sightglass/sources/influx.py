@@ -76,6 +76,13 @@ class InfluxSource:
         self.org = org
         self.token = token
         self.query = query or flux(bucket, measurement, fields, tags or {}, window)
+        # Without a dialect the server sends no #datatype rows, and every value
+        # would be text.
+        self._request = {
+            "query": self.query,
+            "type": "flux",
+            "dialect": {"annotations": ["datatype"], "header": True},
+        }
         self.id_from = tuple(id_from)
         self.prefix = prefix
         self.interval = interval
@@ -85,7 +92,6 @@ class InfluxSource:
         queue: asyncio.Queue[Update] = asyncio.Queue()
         headers = {
             "Authorization": f"Token {self.token}",
-            "Content-Type": "application/vnd.flux",
             "Accept": "application/csv",
         }
         async with aiohttp.ClientSession(
@@ -109,7 +115,7 @@ class InfluxSource:
             async with session.post(
                 f"{self.url}/api/v2/query",
                 params={"org": self.org},
-                data=self.query.encode(),
+                json=self._request,
             ) as response:
                 body = await read_body(response, self.max_bytes)
                 if not response.ok:
@@ -197,9 +203,12 @@ def rows(text: str, id_from: Sequence[str], prefix: str = "") -> Update:
 
 
 def _convert(text: str, kind: str) -> Any:
-    """A cell as the type its column declares; blank for no value."""
+    """A cell as the type its column declares (or, with none declared, the
+    type its text looks like); None for no value."""
     if text == "":
         return None
+    if not kind:
+        return _infer(text)
     try:
         if kind in ("double", "float"):
             return float(text)
@@ -209,6 +218,17 @@ def _convert(text: str, kind: str) -> Any:
         return None
     if kind == "boolean":
         return text == "true"
+    return text
+
+
+def _infer(text: str) -> Any:
+    if text in ("true", "false"):
+        return text == "true"
+    for kind in (int, float):
+        try:
+            return kind(text)
+        except ValueError:
+            pass
     return text
 
 
