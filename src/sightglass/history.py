@@ -175,12 +175,30 @@ class Track:
         return ring[i:j] if i < j else ring[i:] + ring[:j]
 
 
+def _pattern(patterns: Iterable[str]) -> re.Pattern[str]:
+    """One regular expression for any of ``patterns`` (``*``: any characters)."""
+    return re.compile(
+        "|".join(".*".join(map(re.escape, p.split("*"))) for p in patterns) or "(?!)"
+    )
+
+
 class History:
     """The last ``seconds`` of every signal that has sent a number, in slots
     of ``resolution`` seconds (:attr:`Monitor.history`). Recorded and queried
-    on the monitor's event loop thread."""
+    on the monitor's event loop thread.
 
-    def __init__(self, seconds: float = 600, resolution: float = RESOLUTION) -> None:
+    ``only`` limits it to the ids matching these patterns (``*`` for any
+    characters, as in :meth:`matching`): a dashboard that plots a few of its
+    thousands of ids needn't keep the rest (8 bytes a slot each)."""
+
+    max_cached_patterns = 256  # patterns come from queries: don't keep them all
+
+    def __init__(
+        self,
+        seconds: float = 600,
+        resolution: float = RESOLUTION,
+        only: Iterable[str] | None = None,
+    ) -> None:
         if not (seconds > 0 and math.isfinite(seconds)):
             raise ValueError("seconds must be a positive number")
         if not (resolution > 0 and math.isfinite(resolution)):
@@ -189,6 +207,10 @@ class History:
         self.resolution = resolution
         self.slots = max(round(seconds / resolution), 1)
         self._tracks: dict[str, Track] = {}
+        self._only = None if only is None else _pattern(only)
+        self._wanted: dict[str, bool] = {}  # id -> whether `only` lets it in
+        # pattern -> (how many tracks there were, the ids it matched then)
+        self._resolved: dict[str, tuple[int, list[str]]] = {}
 
     def __len__(self) -> int:
         return len(self._tracks)
@@ -204,7 +226,14 @@ class History:
         """Record ``(id, value)`` pairs that arrived at ``now`` (``perf_counter()``)."""
         slot = self.slot_at(now)
         tracks = self._tracks
+        only, wanted = self._only, self._wanted
         for id, value in values:
+            if only is not None:
+                keep = wanted.get(id)
+                if keep is None:
+                    keep = wanted[id] = only.fullmatch(id) is not None
+                if not keep:
+                    continue
             number = chart_number(value)
             track = tracks.get(id)
             if track is None:
@@ -218,14 +247,19 @@ class History:
         order they first sent a number. In a pattern, ``*`` stands for any
         characters (dots included): ``"wave.*"``, ``"MAIN.*.fPosition"``."""
         result: dict[str, None] = {}
+        tracks = len(self._tracks)  # ids are only ever added
         for id in ids:
             if "*" not in id:
                 result[id] = None
                 continue
-            pattern = re.compile(".*".join(map(re.escape, id.split("*"))))
-            result.update(
-                dict.fromkeys(i for i in self._tracks if pattern.fullmatch(i))
-            )
+            matched = self._resolved.get(id)
+            if matched is None or matched[0] != tracks:
+                pattern = _pattern([id])
+                matched = (tracks, [i for i in self._tracks if pattern.fullmatch(i)])
+                if len(self._resolved) >= self.max_cached_patterns:
+                    self._resolved.clear()
+                self._resolved[id] = matched
+            result.update(dict.fromkeys(matched[1]))
         return list(result)
 
     def window(

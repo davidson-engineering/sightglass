@@ -348,3 +348,53 @@ async def test_get_history_says_when_a_pattern_matches_too_many_ids(
     response = await client.get("/history", params={"id": "wave.*"})
     assert response.status == 400
     assert "at most 3 ids per request; these match 5" in await response.text()
+
+
+def test_matching_follows_new_ids_though_patterns_are_remembered():
+    history = History(10)
+    history.record([("wave.1", 1.0)], perf_counter())
+    assert history.matching(["wave.*"]) == ["wave.1"]
+    history.record([("wave.2", 2.0), ("other", 3.0)], perf_counter())
+    assert history.matching(["wave.*"]) == ["wave.1", "wave.2"]  # not the old answer
+    assert history.matching(["wave.*", "other", "wave.1"]) == [
+        "wave.1",
+        "wave.2",
+        "other",
+    ]
+
+
+def test_matching_does_not_keep_every_pattern_it_was_asked():
+    history = History(10)
+    history.record([("a", 1.0)], perf_counter())
+    for i in range(History.max_cached_patterns * 3):
+        assert history.matching([f"a{i}*"]) == []
+    assert len(history._resolved) <= History.max_cached_patterns
+
+
+def test_only_keeps_the_ids_that_match_a_pattern():
+    history = History(10, only=["grid.*.value.0.*", "level"])
+    now = perf_counter()
+    history.record(
+        [
+            ("grid.N.value.0.3", 1.0),
+            ("grid.N.value.1.3", 2.0),  # a different row
+            ("grid.N.flags.0.3", 3.0),
+            ("level", 4.0),
+            ("levels", 5.0),  # fullmatch: not the same id
+            ("name", "text"),
+        ],
+        now,
+    )
+    assert sorted(history._tracks) == ["grid.N.value.0.3", "level"]
+    assert history.matching(["grid.*"]) == ["grid.N.value.0.3"]
+    history.record([("grid.S.value.0.0", 6.0)], now)  # an id that arrives later
+    assert "grid.S.value.0.0" in history
+
+
+def test_only_nothing_records_nothing_and_no_filter_records_everything():
+    nothing = History(10, only=[])
+    nothing.record([("a", 1.0)], perf_counter())
+    assert len(nothing) == 0
+    everything = History(10)
+    everything.record([("a", 1.0)], perf_counter())
+    assert len(everything) == 1
