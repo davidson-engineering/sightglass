@@ -1,0 +1,23 @@
+# A PLC on a wall display: time-series cards for the variables of a Beckhoff
+# TwinCAT PLC, read over ADS. Run it with
+#
+#   sightglass --config examples/ads_timeseries/dashboard.toml
+#
+# or let dashboard.py start a fake PLC to read (Linux and macOS).
+
+title = "Press line"
+version = "0.1.0"
+
+[[source]]
+type = "ads"
+target = "${PLC_TARGET:-127.0.0.1.1.1}"   # the PLC's AMS net id
+variables = ["GVL.fSignal*"]             # * is any characters: the variables of GVL
+interval = 0.1                           # seconds between reads
+
+# One card per name: the last minute above, the last ten seconds below and
+# bigger. ids are the PLC's variable names.
+[[panel]]
+each = ["fSignal0000", "fSignal0001", "fSignal0002"]
+title = "{name}"
+ids = ["GVL.{name}"]
+ranges = [60, 10]

@@ -215,6 +215,15 @@ uv run --all-extras examples/rest_grid/dashboard.py            # the fake API
 uv run --all-extras examples/rest_grid/dashboard.py http://host:8000/api/arrays
 ```
 
+### A PLC instead
+
+The same cards can plot any source. [ads_timeseries/](ads_timeseries/dashboard.toml)
+reads a Beckhoff PLC over ADS: `uv run --all-extras examples/ads_timeseries/dashboard.py`
+starts a fake one (Linux and macOS) and shows three of its variables over the
+last minute and, bigger, the last ten seconds. Set `PLC_TARGET` (or edit the
+file) to read a real one. An InfluxDB bucket is a `type = "influxdb"` source;
+the README has its keys.
+
 For your own API, copy `dashboard.toml`, change the `url`, `prefix`, `select`
 and the panels, and run `sightglass --config your.toml`. The README describes
 every key.

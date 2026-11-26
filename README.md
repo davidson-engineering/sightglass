@@ -48,7 +48,7 @@ a screen function of its own ([screen.py](https://github.com/davidson-engineerin
 Requires Python 3.11+.
 
 ```bash
-pip install "sightglass[web]"        # add serial, zmq, ads, rest, or use [all]
+pip install "sightglass[web]"        # add serial, zmq, ads, rest, influxdb, or use [all]
 ```
 
 Try it: `sightglass --demo launch --open` runs the page above;
@@ -193,6 +193,7 @@ monitor.serve(sources=[device])
 | `ZmqSource(endpoint, pattern="pull")` | ZeroMQ PUSH/PULL: binds `endpoint`; unlike PUB/SUB, nothing sent before the monitor starts is lost |
 | `AdsSource(target, variables)` | a Beckhoff TwinCAT PLC over ADS ([below](#beckhoff-twincat-plcs-ads)); can also write to it |
 | `RestSource(*urls, interval=1)` | JSON REST endpoints, polled with GET (needs `aiohttp`, the `rest` extra); nested objects become dotted ids, lists of objects are keyed by their `id` field; `null` is invalid data, so that id is blanked (a gap in a plot) rather than left showing its last value, as is every id of an endpoint that can't be reached; `Endpoint(url, prefix=, select=, key=, interval=, accept=)` tunes one; `headers={...}` for an API key or bearer token; a down endpoint is logged once and retried |
+| `InfluxSource(url, org=, token=, bucket=)` | an InfluxDB 2.x bucket, polled with Flux (needs the `influxdb` extra, which is `aiohttp`): the newest point of each series, with ids from `id_from`; a series with no point in `window` seconds, or an unreachable server, is blanked, as with `null` in `RestSource`. Use it from a [config file](#dashboards-from-a-config-file) or in Python |
 | `StdinSource()` | piped standard input, as `sightglass` does |
 | `SimulatedSource(fn, rate)` | `fn(seconds)` called `rate` times a second, for demos and tests |
 
@@ -334,8 +335,41 @@ little more than polling it.
 | Key | Meaning |
 | --- | --- |
 | `title`, `history`, `max_elements`, `card_width` | the page heading; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a card |
-| `[[source]]` | `type = "rest"`, `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see `Endpoint` and `RestSource` above |
+| `[[source]]` | one per source, of a `type`: `rest`, `ads`, `zmq`, `serial` or `influxdb`; their keys are below |
 | `[[panel]]` | `title`, `ids`, `ranges` (default `[300, 60]`), `mode` (`"lines"`, or `"heatmap"` for many ids), `each` (a list of names: one card per name, `{name}` in the title and ids) |
+
+Sources, and the keys each takes (any number, of any mix; every id they make
+can be plotted by a panel):
+
+| `type` | Keys |
+| --- | --- |
+| `rest` | `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see `Endpoint` and `RestSource` above |
+| `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC |
+| `zmq` | `endpoint`, `pattern` (`"sub"` or `"pull"`), `bind`, and a `decoder` |
+| `serial` | `port` (default `"auto"`), `baudrate`, and a `decoder` |
+| `influxdb` | InfluxDB 2.x: `url`, `org`, `token`, and a `bucket` (narrowed by `measurement`, `fields`, `tags`) or a Flux `query`; `window`, `id_from`, `prefix`, `interval`, `timeout`: see below |
+
+A `zmq` or `serial` source's `decoder` is `"keyvalue"` (the default), `"json"`,
+`"csv"` with `fields = ["a", "b"]`, or `"binary"` with `bytes = { "1" = "X" }`.
+
+An `influxdb` source runs its query every `interval` seconds and shows the
+newest point of each series, with the id made by joining the columns named in
+`id_from` (default `["_measurement", "_field"]`, so `cell.voltage`). A series
+with no point in the last `window` seconds (default 60) is blanked, as is
+everything while the server can't be reached, so a gap in the data is a gap in
+the plot and never a stale value. With `query`, the Flux must end with one row
+per series (`|> last()`); its own `range()` is the window.
+
+```toml
+[[source]]
+type = "influxdb"
+url = "http://localhost:8086"
+org = "plant"
+token = "${INFLUX_TOKEN}"                      # the token stays out of the file
+bucket = "readings"
+measurement = "cell"
+id_from = ["_measurement", "unit", "_field"]   # cell.A.voltage
+```
 
 Text in a source may hold `${NAME}` or `${NAME:-default}`, replaced by that
 environment variable, so a token never has to be in the file. A mistake in the
