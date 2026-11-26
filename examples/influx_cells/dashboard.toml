@@ -1,0 +1,64 @@
+# Battery cells from InfluxDB 2.x on a wall display: the newest point of each
+# series, as readings and as plots. Run it with
+#
+#   sightglass --config examples/influx_cells/dashboard.toml
+#
+# or let dashboard.py start a fake InfluxDB (fake_influx.py) to read. The data
+# is a measurement `cell` with a tag `unit` (A, B, C) and the fields `voltage`,
+# `current` (numbers) and `ok` (true or false).
+
+title = "Cells"
+version = "0.1.0"
+
+# Where the values come from. A series with no point in the last `window`
+# seconds is blank (a gap in a plot), never its last value.
+[[source]]
+type = "influxdb"
+url = "${INFLUX_URL:-http://127.0.0.1:8086}"
+org = "lab"
+token = "${INFLUX_TOKEN:-demo-token}"   # from the environment, so it stays out of the file
+bucket = "cells"
+measurement = "cell"
+window = 5                               # seconds: how recent a point must be
+id_from = ["_measurement", "unit", "_field"]   # ids are cell.A.voltage, cell.A.ok, ...
+interval = 0.5                           # seconds between queries
+
+# One section per kind of reading; each panel is one cell's, from `each`.
+[[section]]
+title = "Voltage"
+
+[[section.panel]]
+type = "gauge"
+each = ["A", "B", "C"]
+title = "Cell {name}"
+id = "cell.{name}.voltage"
+units = "V"
+precision = 2
+min = 3
+max = 4.2
+
+[[section]]
+title = "Current and health"
+
+[[section.panel]]
+type = "value"
+each = ["A", "B", "C"]
+title = "Cell {name}"
+id = "cell.{name}.current"
+units = "A"
+precision = 2
+
+[[section.panel]]
+type = "lamp"
+each = ["A", "B", "C"]
+title = "Cell {name} ok"
+id = "cell.{name}.ok"
+
+[[section]]
+title = "Last 5 minutes"
+
+[[section.panel]]
+type = "timeseries"
+title = "Voltage, all cells"
+ids = ["cell.*.voltage"]
+ranges = [300, 60]

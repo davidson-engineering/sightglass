@@ -1,6 +1,7 @@
 """The README and the agent guide are contracts: keep them true to the code."""
 
 import ast
+import importlib
 import re
 import subprocess
 import sys
@@ -34,7 +35,11 @@ def check_imports(name: str, source: str) -> None:
             and node.module
             and (node.module.startswith("sightglass"))
         ):
-            module = sightglass.client if node.module.endswith("client") else sightglass
+            module = (
+                sightglass
+                if node.module == "sightglass"
+                else importlib.import_module(node.module)
+            )
             for alias in node.names:
                 # __all__ also names the lazily imported classes without
                 # importing them (AdsSource can't be on Windows without TwinCAT).

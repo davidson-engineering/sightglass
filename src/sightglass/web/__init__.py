@@ -115,7 +115,7 @@ class WebDashboard:
             on Linux without a display, e.g. over SSH).
 
     The page loads the client from ``/_sightglass/sightglass.js``; the LCD
-    and LED styles and fonts are at ``/_sightglass/panel.css``.
+    and LED styles and fonts are at ``/_sightglass/instruments.css``.
     """
 
     def __init__(

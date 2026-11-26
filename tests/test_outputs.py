@@ -147,7 +147,7 @@ async def test_web_serves_page_and_assets(client):
     page = await client.get("/")
     assert page.status == 200
     assert "/_sightglass/sightglass.js" in await page.text()
-    for asset in ["sightglass.js", "panel.css", "fonts/DSEG14Modern-Regular.ttf"]:
+    for asset in ["sightglass.js", "instruments.css", "fonts/DSEG14Modern-Regular.ttf"]:
         response = await client.get(f"/_sightglass/{asset}")
         assert response.status == 200, asset
         assert response.headers["Cache-Control"] == "no-cache"

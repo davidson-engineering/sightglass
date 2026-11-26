@@ -17,7 +17,7 @@
  *   flicker, the raster's refresh rolling down the screen and a slight
  *   brightness flicker.
  *
- * The keyframes at the end are for pages to use too: crt-draw (a panel
+ * The keyframes at the end are for pages to use too: crt-draw (a box
  * drawn in raster steps), crt-type (a title typed in) and crt-blink.
  */
 
@@ -204,7 +204,7 @@ html[data-theme="terminal"] {
   }
 }
 
-/* A panel drawn by the raster, top to bottom (with room for a name cut into
+/* A box drawn by the raster, top to bottom (with room for a name cut into
    its top edge); give it steps() and animation-fill-mode: backwards. */
 @keyframes crt-draw {
   from {

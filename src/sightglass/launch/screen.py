@@ -281,13 +281,13 @@ def quiet_feeds(monitor: Monitor) -> dict[str, bool]:
     }
 
 
-# -- panels -------------------------------------------------------------------------
+# -- boxes -------------------------------------------------------------------------
 
 
-def panel(
+def boxed(
     title: str, body: list[str], width: int, quiet: str | None = None
 ) -> list[str]:
-    """A titled panel; dimmed, and saying so, when its feed has gone quiet."""
+    """A titled box; dimmed, and saying so, when its feed has gone quiet."""
     heading = paint(LEGEND, title)
     if quiet:
         note = f"No data from {quiet}"
@@ -534,19 +534,19 @@ def full_screen(monitor: Monitor, width: int, height: int, web: str) -> list[str
     # The vehicle.
     lines += row_of(
         [
-            panel(
+            boxed(
                 "Trajectory",
                 trajectory(monitor, inner[0], 4),
                 inner[0],
                 note("vehicle"),
             ),
-            panel(
+            boxed(
                 "Flight dynamics",
                 dynamics(monitor, inner[1]),
                 inner[1],
                 note("vehicle"),
             ),
-            panel("Propulsion", propulsion(monitor, 4), inner[2], note("vehicle")),
+            boxed("Propulsion", propulsion(monitor, 4), inner[2], note("vehicle")),
         ]
     )
     lines.append(rule(width, {first: "┼", second: "┼"}))
@@ -555,14 +555,14 @@ def full_screen(monitor: Monitor, width: int, height: int, web: str) -> list[str
     rows = height - len(lines) - 2
     bottom = row_of(
         [
-            panel("Go/no-go poll", poll(monitor, inner[0]), inner[0], note("ground")),
-            panel(
+            boxed("Go/no-go poll", poll(monitor, inner[0]), inner[0], note("ground")),
+            boxed(
                 "Weather at the pad",
                 weather(monitor, inner[1]),
                 inner[1],
                 note("weather"),
             ),
-            panel("Events", events(monitor, inner[2], rows - 1), inner[2]),
+            boxed("Events", events(monitor, inner[2], rows - 1), inner[2]),
         ]
     )
     lines += (bottom + [fit("", first) + bar + fit("", widths[1]) + bar] * rows)[:rows]

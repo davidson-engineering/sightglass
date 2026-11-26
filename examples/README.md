@@ -197,14 +197,19 @@ and `SIGHTGLASS_ALLOW_WRITES=1`: see
 ## 10. A dashboard from a config file (a REST API)
 
 A whole dashboard in one TOML file: where the values come from (a web service
-that answers GET with JSON, polled five times a second) and what to plot. No
-code and no page to write. Each of five sensor arrays gets a panel with lines
-for its first row of cells over the last 5 minutes and, bigger, the last
-minute, on a dark page with large text for reading from across a room. The
-panels wrap like Grafana's as the screen changes size.
-[rest_grid/dashboard.toml](rest_grid/dashboard.toml) is commented line by
-line. It needs no service of its own: `dashboard.py` starts a fake API
-([rest_grid/fake_api.py](rest_grid/fake_api.py)) and points the file at it.
+that answers GET with JSON, polled five times a second) and what to show. No
+code and no page to write. Examples 10 to 12 are built the same way, and share
+the words the README defines (dashboard, source, section, panel, plot): a
+folder with `dashboard.toml`, commented line by line, a stand-in for the real
+source (`fake_*.py`), so each runs with nothing else installed, and
+`dashboard.py`, which starts the stand-in and runs `sightglass --config` on the
+file. To use the real source, copy the file and change its `[[source]]`.
+
+Each of five sensor arrays gets a `timeseries` panel with lines for its first
+row of cells over the last 5 minutes and, bigger, the last minute, on a dark
+page with large text for reading from across a room. The panels wrap like
+Grafana's as the screen changes size. [rest_grid/](rest_grid/dashboard.toml)
+starts a fake API ([rest_grid/fake_api.py](rest_grid/fake_api.py)).
 
 ![The sensor grid wall display: five panels, North, South, East, West and Roof, each plotting its sensors over the last 5 minutes and, larger, the last minute](../docs/rest-grid.webp)
 
@@ -215,15 +220,42 @@ uv run --all-extras examples/rest_grid/dashboard.py            # the fake API
 uv run --all-extras examples/rest_grid/dashboard.py http://host:8000/api/arrays
 ```
 
-### A PLC instead
-
-The same panels can show any source. [ads_timeseries/](ads_timeseries/dashboard.toml)
-reads a Beckhoff PLC over ADS: `uv run --all-extras examples/ads_timeseries/dashboard.py`
-starts a fake one (Linux and macOS) and shows three of its variables over the
-last minute and, bigger, the last ten seconds. Set `PLC_TARGET` (or edit the
-file) to read a real one. An InfluxDB bucket is a `type = "influxdb"` source;
-the README has its keys.
-
 For your own API, copy `dashboard.toml`, change the `url`, `prefix`, `select`
 and the panels, and run `sightglass --config your.toml`. The README describes
 every key.
+
+## 11. A PLC as readings and plots (ADS)
+
+The same file format over a different source, and with every kind of panel,
+in two sections. [ads_press/](ads_press/dashboard.toml) reads a Beckhoff
+TwinCAT PLC over ADS: a `gauge` for pressure, `value` panels for the
+temperature and the parts count, a `lamp` for each of two flags, and below
+them `timeseries` panels of the pressure and temperature. The PLC's variable
+names are the ids. `ads_press/fake_plc.py` is a fake PLC; edit the file's
+`target` and `variables` (or set `PLC_TARGET`) to read a real one.
+
+```bash
+uv run --all-extras examples/ads_press/dashboard.py            # a fake PLC
+PLC_TARGET=5.12.34.56.1.1 sightglass --config examples/ads_press/dashboard.toml
+```
+
+The fake PLC needs Linux or macOS: on Windows, pyads needs TwinCAT's own ADS
+router, which can't reach it. A dashboard never writes to a PLC.
+
+## 12. A database as readings and plots (InfluxDB)
+
+[influx_cells/](influx_cells/dashboard.toml) reads an InfluxDB 2.x bucket of
+battery cells: the newest point of each series, one `gauge`, `value` and
+`lamp` per cell, and a `timeseries` panel of all the voltages. A series with
+no point in the last `window` seconds goes blank (cell C is quiet for ten
+seconds in every forty), never its last value. The token comes from the
+environment, so it stays out of the file. `influx_cells/fake_influx.py` is a
+fake server that answers in Flux's annotated CSV.
+
+```bash
+uv run --all-extras examples/influx_cells/dashboard.py             # a fake InfluxDB
+INFLUX_TOKEN=... uv run --all-extras examples/influx_cells/dashboard.py http://host:8086
+```
+
+For your own bucket, edit the file's `org`, `bucket`, `measurement` and the ids
+its panels show. The README describes every key.

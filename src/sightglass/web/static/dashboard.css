@@ -7,7 +7,7 @@
 
 :root {
   color-scheme: dark;
-  /* Bahnschrift is a DIN-style face made for signs and instrument panels:
+  /* Bahnschrift is a DIN-style face made for signs and instrument clusters:
      heavy, even digits that stay readable from far away. It ships with
      Windows 10 and later; other systems get the next one that exists. */
   --font: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Segoe UI",

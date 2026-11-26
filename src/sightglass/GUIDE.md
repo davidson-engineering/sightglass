@@ -246,7 +246,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 
 ## 5. A custom page
 
-For a branded or hardware-style panel, write plain HTML and bind elements by
+For a branded or hardware-style page, write plain HTML and bind elements by
 id; no JavaScript is needed. `sightglass --demo launch` runs a complete
 example (gauges, tanks, lamps, several feeds) whose source ships with the
 package: `python -c "import sightglass.launch as m; print(m.HERE)"` prints
@@ -255,7 +255,7 @@ displays, LEDs), and its `examples/README.md` has a runnable example of each
 route in this guide (one command each), plus a Docker deployment.
 
 ```html
-<link rel="stylesheet" href="/_sightglass/panel.css">
+<link rel="stylesheet" href="/_sightglass/instruments.css">
 <span data-bind="temperature"></span>
 <div class="led" data-bind="pump" data-mode="state"></div>
 <div data-bind="rate.values" data-mode="sparkline" style="height: 24px"></div>
@@ -296,7 +296,7 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
   `html[data-theme="terminal"]` using the `--crt-*` colours and fonts
   (`--crt-display-font` for a big clock-like display, at multiples of 11px;
   `--crt-readout-font` for readings, at multiples of 8px). The CRT effects
-  cover any such page; animate your panels with its `crt-draw` and
+  cover any such page; animate your boxes with its `crt-draw` and
   `crt-type` keyframes, only under `prefers-reduced-motion: no-preference`.
 - **Checking the ids:** press `` ` `` on the page for the signals view: every
   id the dashboard receives, its value as sent and its last minute. A

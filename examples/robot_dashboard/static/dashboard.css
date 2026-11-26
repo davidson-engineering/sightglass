@@ -1,6 +1,6 @@
 /* Sizes are multiples of --u: 1rem, or less on narrow screens (below), so the
-   whole panel scales down to fit instead of running off the side. The 8px and
-   12px paddings match the displays' own, from panel.css. */
+   whole console scales down to fit instead of running off the side. The 8px and
+   12px paddings match the displays' own, from instruments.css. */
 :root {
   --u: 1rem;
   --label-column: calc(4.75 * var(--u));
@@ -22,7 +22,7 @@ body {
 
 /* Both plates share one set of columns (labels | display | indicators), so the
    displays line up however wide the fonts make them. */
-.panel {
+.console {
   display: grid;
   grid-template-columns: var(--label-column) max-content max-content;
   column-gap: calc(1.25 * var(--u));
@@ -176,13 +176,13 @@ html[data-connection="open"][data-stale] .link-state::after {
   content: "No data";
 }
 
-/* Narrow screens: the lamps go below the displays, and the panel shrinks. */
+/* Narrow screens: the lamps go below the displays, and the console shrinks. */
 @media (max-width: 1080px) {
   :root {
     --u: min(1rem, (100vw - 56px) / 51);
   }
 
-  .panel {
+  .console {
     grid-template-columns: var(--label-column) max-content;
   }
 

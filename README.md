@@ -448,7 +448,7 @@ pages' look until a viewer switches ([themes](#themes)). Your own page
 loads `/_sightglass/sightglass.js` and marks up elements:
 
 ```html
-<link rel="stylesheet" href="/_sightglass/panel.css">
+<link rel="stylesheet" href="/_sightglass/instruments.css">
 
 <span data-bind="temperature"></span>                                  <!-- text -->
 <div class="led" data-bind="machine.estop" data-mode="state"></div>    <!-- data-state="on"/"off" -->
@@ -474,14 +474,14 @@ page fed by several sources can show which one has gone quiet
 
 Object values are flattened, so a `RangeBar` binds as `<id>.text` and
 `<id>.ratio`, a `Sparkline` as `<id>.text` and `<id>.values`, and a
-`MachineState` as `<id>.<state>`. `panel.css` provides the segment display
+`MachineState` as `<id>.<state>`. `instruments.css` provides the segment display
 (`.lcd`, `.lcd-field`) and LED (`.led`, `.led-red`, `.led-amber`) styles.
 Files in `static_dir` are served under `/static/`.
 
 #### Signals view
 
 Every page that loads `sightglass.js` (the generic page, the launch demo,
-yours) has a panel for checking what a feed sends: press `` ` `` (or click
+yours) has a view for checking what a feed sends: press `` ` `` (or click
 **Signals** on the generic page, or an element of yours marked
 `data-signals-open`). It lists every id the dashboard has accepted, its latest
 value as sent (before an element scales or formats it), how long ago it
@@ -606,11 +606,11 @@ The generic page and the launch demo come in two themes: **classic**, and
 glass cockpit's CRTs: gauges with filled sectors, caution bands and red limits,
 boxed readouts, scales, and a red X over anything whose data has stopped. Its
 CRT effects, on a switch of their own, are still (glow, scanlines, the tube's
-rounded corners and glass) and moving (a power-on that draws each panel
+rounded corners and glass) and moving (a power-on that draws each box
 and types its name, the refresh rolling down the screen, a faint flicker); the
 moving ones are left out for anyone whose system asks for reduced motion.
 
-![The launch demo in the terminal theme: green phosphor text, double-ruled panels, an inverted status bar, cockpit-style gauges, checklists and dot leaders](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/launch-terminal-theme.png)
+![The launch demo in the terminal theme: green phosphor text, double-ruled boxes, an inverted status bar, cockpit-style gauges, checklists and dot leaders](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/launch-terminal-theme.png)
 
 `--theme terminal` or `WebDashboard(theme="terminal")` sets the default; a
 switch on the page lets each viewer change it, and their browser remembers.
@@ -633,7 +633,7 @@ then style it under `html[data-theme="terminal"]` with the `--crt-*` colours
 `--crt-readout-font` (Silkscreen) for readings. Pixel fonts are sharp only at
 whole pixels: give Micro 5 multiples of 11px and Silkscreen multiples of 8px.
 `terminal.css` draws the CRT effects over any page; for the power-on, give
-your panels its keyframes, `crt-draw` (drawn top to bottom, with `steps()`)
+your boxes its keyframes, `crt-draw` (drawn top to bottom, with `steps()`)
 and `crt-type` (typed in), inside
 `@media (prefers-reduced-motion: no-preference)`. `theme.js` sets the theme
 before anything is drawn, so the page never flashes the other one.
@@ -679,8 +679,11 @@ install beyond [uv](https://docs.astral.sh/uv/):
 | 5. Many processes | several programs, one dashboard, with `Client` | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#5-many-processes-one-dashboard) |
 | 6. Docker | deployed as a service, fed over the network | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#6-deploy-with-docker) |
 | 7. Terminal | drawn in the terminal | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#7-in-the-terminal) |
-| 8. Custom page | a segment-display page, over serial | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#8-a-custom-panel-and-a-serial-device) |
+| 8. Custom page | a segment-display page, over serial | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#8-a-custom-page-and-a-serial-device) |
 | 9. Beckhoff PLC | a TwinCAT PLC over ADS, from an interface file | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#9-a-beckhoff-plc-over-ads) |
+| 10. Config file: REST | a dashboard that is a file: plots of a JSON API | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#10-a-dashboard-from-a-config-file-a-rest-api) |
+| 11. Config file: ADS | readings, lamps, gauge and plots of a PLC | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#11-a-plc-as-readings-and-plots-ads) |
+| 12. Config file: InfluxDB | readings, lamps, gauges and plots from a database | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#12-a-database-as-readings-and-plots-influxdb) |
 
 ## Extending
 
