@@ -412,7 +412,7 @@ page, so keep those dashboards to sources with a few hundred ids.
 
 | Key | Meaning |
 | --- | --- |
-| `title`, `version`, `history`, `max_elements`, `panel_width`, `title_bar` | the page heading; a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a panel; where the title bar goes, `"top"` (the default) or `"bottom"` |
+| `title`, `version`, `history`, `max_elements`, `panel_width`, `title_bar`, `debug` | the page heading; a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a panel; where the title bar goes, `"top"` (the default) or `"bottom"`; `true` to show whether the sources and the page keep up in the signals view (`` ` ``, default `false`) |
 | `[[source]]` | one per source, of a `type`: `rest`, `ads`, `zmq`, `serial` or `influxdb`; their keys are below |
 | `[[section]]`, `[[panel]]` | as above |
 
@@ -504,8 +504,10 @@ yours) has a view for checking what a feed sends: press `` ` `` (or click
 **Signals** on the generic page, or an element of yours marked
 `data-signals-open`). It lists every id the dashboard has accepted, its latest
 value as sent (before an element scales or formats it), how long ago it
-arrived, and a chart of its last minute. Above the table are labelled figures for whether things keep up, over the
-last second and only while the view is open. With REST or InfluxDB sources,
+arrived, and a chart of its last minute. With `debug` on (`debug = true` in a config file, `--debug`, or
+`WebDashboard(debug=True)`; off by default, since measuring costs the page a
+little) the view also shows labelled figures for whether things keep up, over
+the last second and only while it is open. With REST or InfluxDB sources,
 each has its polls a second and how long the last and slowest recent polls
 took: a service that answers slowly shows here. **Page** is the browser's own:
 frames a second, the longest frame and long tasks that blocked it. **Values**

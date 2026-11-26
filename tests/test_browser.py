@@ -332,7 +332,7 @@ class Ticking:
 
 async def test_signals_view_shows_how_fast_the_sources_poll(page, serve):
     monitor = Monitor()
-    await page.goto(serve(None, monitor, sources=[Ticking()]))
+    await page.goto(serve(None, monitor, sources=[Ticking()], debug=True))
     await page.locator("[data-signals-open]").click()
     stats = page.locator("sightglass-signals .stats")
     await expect(stats.locator("h3", has_text="plant/api")).to_be_visible(
@@ -347,7 +347,7 @@ async def test_signals_view_shows_how_fast_the_sources_poll(page, serve):
 
 async def test_signals_view_shows_whether_the_page_keeps_up(page, serve):
     monitor = Monitor()
-    await page.goto(serve(None, monitor, sources=[Ticking()]))
+    await page.goto(serve(None, monitor, sources=[Ticking()], debug=True))
     await page.locator("[data-signals-open]").click()
     stats = page.locator("sightglass-signals .stats")
     number = lambda key: stats.locator(f"[data-stat={key}] b")  # noqa: E731
@@ -367,13 +367,25 @@ async def test_signals_view_shows_how_quickly_plots_get_their_points(page, serve
     monitor = Monitor(history=60)
     monitor.set("a", 1)
     body = '<div data-plot="a" style="height: 100px"></div>'
-    await page.goto(serve(body, monitor))
+    await page.goto(serve(body, monitor, debug=True))
     await page.locator("body").press("`")
     stats = page.locator("sightglass-signals .stats")
     await expect(stats.locator("[data-stat=requests] b")).to_have_text(
         re.compile(r"^\d+$"), timeout=10_000
     )
     await expect(stats.locator("[data-stat=slowest]")).to_be_visible()
+
+
+async def test_signals_view_has_no_figures_unless_the_dashboard_is_in_debug(
+    page, serve
+):
+    monitor = Monitor()
+    await page.goto(serve(None, monitor, sources=[Ticking()]))
+    await page.locator("[data-signals-open]").click()
+    view = page.locator("sightglass-signals")
+    await expect(view.locator("tbody tr")).to_have_count(1)  # it is up and has data
+    await page.wait_for_timeout(2500)
+    await expect(view.locator(".stat")).to_have_count(0)
 
 
 async def test_signals_view_charts_are_one_line_forward_in_time(page, serve):

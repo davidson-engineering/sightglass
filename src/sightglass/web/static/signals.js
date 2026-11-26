@@ -73,7 +73,6 @@ export async function open() {
   host.dataset.connection = "connecting";
   connect(250);
   ticker = setInterval(showAges, 1000);
-  watchPage();
   render();
 }
 
@@ -209,6 +208,7 @@ function receive(message) {
     signal.text = data.text; // written to its row when that is on screen (draw)
     dirty.add(signal);
   }
+  if (message.type === "snapshot" && message.debug) watchPage(); // figures only if the dashboard asks
   if (message.feeds) showFeeds(message.feeds);
   if (added.length || message.type === "snapshot") place();
   schedule();
@@ -427,6 +427,7 @@ const fresh = () => ({
 });
 
 function watchPage() {
+  if (page) return;
   page = { ...fresh(), merged: null, merges: 0, seen: false };
   let last = 0;
   const frame = (now) => {

@@ -110,6 +110,9 @@ class WebDashboard:
         stale_after: seconds without new data after which the page dims its
             values, for sources expected to update continuously.
         fps: maximum pushes per second to each browser.
+        debug: show, in the signals view, figures on whether the dashboard and
+            the page keep up (polls a second, frames a second, waits). Off by
+            default: measuring costs the page a little.
         announce: print the address when the server starts.
         open_browser: open the page in a browser once the server is up (not
             on Linux without a display, e.g. over SSH).
@@ -131,6 +134,7 @@ class WebDashboard:
         theme: str = "classic",
         stale_after: float | None = None,
         fps: float = 30,
+        debug: bool = False,
         announce: bool = True,
         open_browser: bool = False,
     ) -> None:
@@ -150,6 +154,7 @@ class WebDashboard:
         self.theme = theme
         self.stale_after = stale_after
         self.fps = fps
+        self.debug = debug
         self.announce = announce
         self.open_browser = open_browser
         self._runner: web.AppRunner | None = None
@@ -422,7 +427,8 @@ class WebDashboard:
             await ws.send_json(
                 {
                     "type": "snapshot",
-                    "feeds": monitor.feeds(),
+                    "debug": self.debug,
+                    "feeds": monitor.feeds() if self.debug else [],
                     **monitor.signals.snapshot(now),
                 }
             )
@@ -444,7 +450,9 @@ class WebDashboard:
                         "from": sent,
                         "signals": changed,
                     }
-                    if now - feeds_at >= 1:  # figures over seconds: not every slot
+                    if (
+                        self.debug and now - feeds_at >= 1
+                    ):  # figures over seconds: not every slot
                         message["feeds"] = monitor.feeds()
                         feeds_at = now
                     await ws.send_json(message)

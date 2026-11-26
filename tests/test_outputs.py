@@ -444,3 +444,13 @@ async def test_web_posts_device_values_with_the_token_only(
     # Without a token nothing in the request is applied; otherwise the
     # values to show are, whatever happened to the device's.
     assert ("note" in monitor) == (token is not None)
+
+
+async def test_the_signals_stream_says_whether_to_show_figures():
+    for debug in (False, True):
+        dashboard = WebDashboard(debug=debug)
+        async with TestClient(TestServer(dashboard.app(Monitor()))) as client:
+            ws = await client.ws_connect("/ws/signals")
+            snapshot = await ws.receive_json(timeout=1)
+            assert snapshot["debug"] is debug
+            await ws.close()

@@ -282,3 +282,15 @@ def test_the_page_has_no_legend_and_its_identity_is_in_the_title_bar(tmp_path):
     assert "top to bottom" not in page and "<span>" not in page
     header = page[page.index("<header>") : page.index("</header>")]
     assert 'class="identity"' in header
+
+
+def test_debug_is_off_unless_the_config_says_true(tmp_path):
+    def found(setting):
+        path = tmp_path / "dashboard.toml"
+        path.write_text(f"{setting}{SOURCE}\n[[panel]]\nids = ['a']\n", "utf-8")
+        return load(path)
+
+    assert found("").debug is False
+    assert found("debug = true\n").debug is True
+    with pytest.raises(ValueError, match="debug must be true or false"):
+        found('debug = "yes"\n')

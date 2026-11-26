@@ -54,6 +54,7 @@ TOP_KEYS = {
     "max_elements",
     "panel_width",
     "title_bar",
+    "debug",
     "source",
     "section",
     "panel",
@@ -82,6 +83,7 @@ class Dashboard:
     sections: list[Section] = field(default_factory=list)
     version: str = ""  # the dashboard's own, from the file
     title_bar: str = "top"  # where the title bar goes: "top" or "bottom"
+    debug: bool = False  # figures on whether sources and page keep up
     config: str = ""  # the file's name
     digest: str = ""  # a short fingerprint of the file's text: it changes when it does
     started: str = ""  # when this instance was loaded
@@ -118,7 +120,8 @@ def load(path: str | Path) -> Dashboard:
     default: the longest range and a minute), ``max_elements`` (default 2000),
     ``panel_width`` (least pixels wide a panel is; default 520), ``title_bar``
     (``"top"``, the default, or ``"bottom"``: where the title and what
-    identifies this instance go).
+    identifies this instance go), ``debug`` (``true`` to show, in the signals
+    view, whether the sources and the page keep up; default ``false``).
 
     ``[[source]]``, of a ``type``: ``rest`` (``url`` (required), ``prefix``,
     ``select``, ``key``, ``interval``, ``timeout``, ``accept`` and ``headers``;
@@ -192,6 +195,9 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
         raise ValueError(
             f"title_bar must be {' or '.join(TITLE_BARS)}, not {title_bar!r}"
         )
+    debug = data.get("debug", False)
+    if not isinstance(debug, bool):
+        raise ValueError("debug must be true or false")
     _one_format_each(panels)
     return Dashboard(
         title,
@@ -202,6 +208,7 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
         found,
         version=str(version),
         title_bar=title_bar,
+        debug=debug,
     )
 
 

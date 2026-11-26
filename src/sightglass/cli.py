@@ -188,6 +188,12 @@ def parser() -> argparse.ArgumentParser:
         help="dim values when no data has arrived for this long",
     )
     display.add_argument(
+        "--debug",
+        action="store_true",
+        help="in the signals view (`), show whether the sources and the page "
+        "keep up: polls a second, frames a second, waits",
+    )
+    display.add_argument(
         "--max-elements",
         type=int,
         default=500,
@@ -276,6 +282,7 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
                 theme=args.theme,
                 token=args.token,
                 stale_after=args.stale_after,
+                debug=args.debug,
                 open_browser=args.open,
             )
         )
@@ -329,6 +336,7 @@ def config_build(
         theme=args.theme,
         token=args.token,
         stale_after=args.stale_after,
+        debug=args.debug or dashboard.debug,
         open_browser=args.open,
     )
     return monitor, dashboard.sources, [web]
@@ -381,6 +389,7 @@ def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
         "--title": args.title != "Monitor",
         "--token": args.token,
         "--stale-after": args.stale_after,
+        "--debug": args.debug,
         "--history": args.history is not None,
         "--max-elements": args.max_elements != 500,
         "--terminal": args.terminal and not terminal,
