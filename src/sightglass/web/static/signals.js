@@ -206,9 +206,7 @@ function receive(message) {
     });
     signal.number = data.number;
     signal.arrived = Date.now() - data.age * 1000;
-    signal.value.textContent = data.text;
-    signal.value.title = data.text;
-    signal.age.textContent = ago(signal.arrived);
+    signal.text = data.text; // written to its row when that is on screen (draw)
     dirty.add(signal);
   }
   if (message.feeds) showFeeds(message.feeds);
@@ -310,6 +308,11 @@ function draw() {
   frame = 0;
   for (const signal of dirty) {
     if (!visible.has(signal)) continue; // drawn when scrolled into view
+    if (signal.value.textContent !== signal.text) {
+      signal.value.textContent = signal.text;
+      signal.value.title = signal.text;
+    }
+    signal.age.textContent = ago(signal.arrived);
     drawChart(signal);
     dirty.delete(signal);
   }
@@ -492,7 +495,7 @@ function showPage() {
             ["longest", was.blocked ? ms(was.longest) : "-", "longest task", was.longest > slow],
           ]
         : []),
-    ]),
+    ], "Measured while this view is open, which costs the page some frames itself"),
   ];
   if (was.messages) {
     pageGroups.push(
