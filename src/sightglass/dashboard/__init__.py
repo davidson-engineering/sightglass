@@ -140,6 +140,8 @@ def load(path: str | Path) -> Dashboard:
     raw = path.read_bytes()
     try:
         data = tomllib.loads(raw.decode("utf-8"))
+    except UnicodeDecodeError:
+        raise ValueError(f"{path}: not UTF-8 text") from None
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
     try:
@@ -171,11 +173,30 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
     panel_width = int(number(data, "panel_width", 520, "the config"))
     title = data.get("title", "Dashboard")
     version = data.get("version", "")
-    if not isinstance(title, str) or not isinstance(version, str | int | float):
+    if (
+        not isinstance(title, str)
+        or isinstance(version, bool)
+        or not isinstance(version, str | int | float)
+    ):
         raise ValueError("title and version must be text")
+    _one_format_each(panels)
     return Dashboard(
         title, history, max_elements, panel_width, built, found, version=str(version)
     )
+
+
+def _one_format_each(panels: list[Panel]) -> None:
+    """Refuse two panels that show an id to different numbers of decimals: the
+    monitor formats an id once."""
+    seen: dict[str, int] = {}
+    for panel in panels:
+        if panel.precision is None:
+            continue
+        if seen.setdefault(panel.ids[0], panel.precision) != panel.precision:
+            raise ValueError(
+                f"{panel.ids[0]} is shown to {seen[panel.ids[0]]} and "
+                f"{panel.precision} decimals; give its panels one precision"
+            )
 
 
 def _sections(data: dict[str, Any]) -> list[Section]:

@@ -135,7 +135,7 @@ def main() -> None:
         os.close(controller)
         (DOCS / "sightglass.log").unlink(missing_ok=True)
     print(
-        "Saved launch-control.png, signals-panel.png, launch-terminal-theme.png, "
+        "Saved launch-control.png, signals-view.png, launch-terminal-theme.png, "
         "launch-terminal.png"
     )
 

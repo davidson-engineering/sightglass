@@ -77,12 +77,12 @@ def test_only_a_timeseries_needs_history_and_only_the_others_need_live_values(tm
 def test_a_number_shown_to_fixed_decimals_is_declared_once(tmp_path):
     text = (
         '[[panel]]\ntype = "value"\nid = "a"\nprecision = 2\n'
-        '[[panel]]\ntype = "gauge"\nid = "a"\nprecision = 0\n'
+        '[[panel]]\ntype = "gauge"\nid = "a"\nprecision = 2\n'
         '[[panel]]\ntype = "value"\nid = "b"\n'
     )
     (element,) = dashboard(tmp_path, text).elements()
     assert isinstance(element, TextElement) and element.id == "a"
-    assert element.format.precision == 2  # the first panel to name it decides
+    assert element.format.precision == 2
 
 
 def test_each_makes_a_panel_per_name_of_any_type(tmp_path):
@@ -142,3 +142,41 @@ def test_a_bad_panel_says_what_is_wrong_in_one_line(tmp_path, text, message):
     with pytest.raises(ValueError, match=message) as error:
         dashboard(tmp_path, text)
     assert "\n" not in str(error.value)
+
+
+def test_large_numbers_are_written_whole(tmp_path):
+    text = (
+        '[[panel]]\ntype = "gauge"\nid = "a"\nmax = 1234567\n'
+        '[[panel]]\nids = ["b"]\nranges = [1234567]\n'
+    )
+    page = dashboard(tmp_path, text).page()
+    assert "--max: 1234567" in page and 'data-seconds="1234567"' in page
+
+
+def test_two_panels_may_not_show_an_id_to_different_decimals(tmp_path):
+    text = (
+        '[[panel]]\ntype = "value"\nid = "a"\nprecision = 1\n'
+        '[[panel]]\ntype = "gauge"\nid = "a"\nprecision = 3\n'
+    )
+    with pytest.raises(ValueError, match="a is shown to 1 and 3 decimals"):
+        dashboard(tmp_path, text)
+    same = text.replace("precision = 3", "precision = 1")
+    assert len(dashboard(tmp_path, same).elements()) == 1
+
+
+def test_a_config_that_is_not_utf8_names_the_file(tmp_path):
+    path = tmp_path / "dashboard.toml"
+    path.write_bytes('title = "caf\u00e9"'.encode("utf-16"))
+    with pytest.raises(ValueError, match=r"dashboard\.toml: not UTF-8") as error:
+        load(path)
+    assert "\n" not in str(error.value)
+
+
+def test_version_is_text_or_a_number(tmp_path):
+    path = tmp_path / "dashboard.toml"
+    body = SOURCE + '[[panel]]\nids = ["a"]\n'
+    path.write_text("version = true\n" + body, "utf-8")
+    with pytest.raises(ValueError, match="title and version"):
+        load(path)
+    path.write_text("version = 2\n" + body, "utf-8")
+    assert load(path).version == "2"

@@ -24,6 +24,7 @@ id_from = ["_measurement", "unit", "_field"]   # ids are cell.A.voltage, cell.A.
 interval = 0.5                           # seconds between queries
 
 # One section per kind of reading; each panel is one cell's, from `each`.
+# Sections stack, and a section asks for height by its tallest panel.
 [[section]]
 title = "Voltage"
 
@@ -38,7 +39,7 @@ min = 3
 max = 4.2
 
 [[section]]
-title = "Current and health"
+title = "Current"
 
 [[section.panel]]
 type = "value"
@@ -47,6 +48,9 @@ title = "Cell {name}"
 id = "cell.{name}.current"
 units = "A"
 precision = 2
+
+[[section]]
+title = "Health"
 
 [[section.panel]]
 type = "lamp"

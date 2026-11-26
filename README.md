@@ -354,7 +354,8 @@ level, with no `[[section]]`, are one section without a heading.
 | `lamp` | one id as a light: on for `true`, non-zero and `"on"`, off otherwise | `id` |
 | `gauge` | one id as a bar between a minimum and a maximum, with the value above it | `id`, `min` (default 0), `max` (default 100), `units`, `precision` |
 
-Every panel also takes `title`, and `each`: a list of names that makes one
+Two panels may show the same id, but not to different `precision`s (the monitor
+formats an id once). Every panel also takes `title`, and `each`: a list of names that makes one
 panel per name, with `{name}` replaced in the title and in `id` or `ids`. A
 `timeseries` takes patterns, because it plots many; the others take one exact
 `id`. An invalid value (`null` from a REST API, a series InfluxDB has stopped
@@ -432,7 +433,8 @@ id_from = ["_measurement", "unit", "_field"]   # cell.A.voltage
 ```
 
 Text in a source may hold `${NAME}` or `${NAME:-default}`, replaced by that
-environment variable, so a token never has to be in the file. A mistake in the
+environment variable, so a token never has to be in the file; write `$${` for a
+literal `${` (Flux has its own, in an InfluxDB `query`). A mistake in the
 file, such as an unknown key, is one clear line. `--port`, `--host`, `--open`
 and `--token` still apply; the options the file replaces (`--rest`, `--title`,
 `--history` and so on) are refused. [examples/](examples/README.md#10-a-dashboard-from-a-config-file-a-rest-api)
@@ -491,7 +493,7 @@ of each half second, so a fast swing isn't lost, and booleans and on/off chart
 as steps. Type to filter by id; `` ` `` or Escape closes it. It streams over a
 WebSocket of its own (`/ws/signals`) only while open.
 
-![The signals view over the launch demo: every id with its value and a chart of the last minute, from the end of the countdown through liftoff](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/signals-panel.png)
+![The signals view over the launch demo: every id with its value and a chart of the last minute, from the end of the countdown through liftoff](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/signals-view.png)
 
 #### History and value-vs-time plots
 

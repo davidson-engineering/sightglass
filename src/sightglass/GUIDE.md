@@ -9,7 +9,7 @@ creates its display. Print this guide from any project with
 ## 1. Install
 
 ```bash
-pip install "sightglass[web]"     # add serial / zmq / ads / rest extras as needed, or [all]
+pip install "sightglass[web]"     # add serial / zmq / ads / rest / influxdb extras as needed, or [all]
 ```
 
 Python 3.11+. The package has no required dependencies; `[web]` adds

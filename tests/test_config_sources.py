@@ -181,9 +181,9 @@ def test_flux_csv_becomes_ids_and_typed_values():
 
 
 def test_a_flux_error_in_the_reply_is_a_failure():
-    from sightglass.sources.rest import _Failed
+    from sightglass.sources._poll import Failed
 
-    with pytest.raises(_Failed, match="the query failed: bad flux"):
+    with pytest.raises(Failed, match="the query failed: bad flux"):
         rows("error,reference\r\nbad flux,897\r\n", ("_field",))
 
 
@@ -291,3 +291,17 @@ async def test_an_influxdb_that_rejects_the_token_is_logged_once_and_blanks_the_
     assert len(warnings) == 1
     assert "HTTP 401 unauthorized access" in warnings[0]
     assert "s3cret" not in warnings[0] and "bad" not in warnings[0]
+
+
+def test_a_dollar_brace_in_a_flux_query_can_be_escaped(tmp_path, monkeypatch):
+    """Flux has its own ${...}: $${ writes it without asking for a variable."""
+    monkeypatch.setenv("BUCKET", "plant")
+    (source,) = sources(
+        tmp_path,
+        'type = "influxdb"\nurl = "http://x"\norg = "o"\ntoken = "t"\n'
+        'query = """from(bucket: "${BUCKET}") |> map(fn: (r) => '
+        '({r with s: "$${r._field}"}))"""',
+    )
+    assert source.query == (
+        'from(bucket: "plant") |> map(fn: (r) => ({r with s: "${r._field}"}))'
+    )

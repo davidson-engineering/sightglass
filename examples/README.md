@@ -257,5 +257,7 @@ uv run --all-extras examples/influx_cells/dashboard.py             # a fake Infl
 INFLUX_TOKEN=... uv run --all-extras examples/influx_cells/dashboard.py http://host:8086
 ```
 
+![The cells wall display: a gauge per cell for voltage, then current as values, health as lamps, and the voltages plotted over the last 5 minutes and the last minute](../docs/influx-cells.webp)
+
 For your own bucket, edit the file's `org`, `bucket`, `measurement` and the ids
 its panels show. The README describes every key.

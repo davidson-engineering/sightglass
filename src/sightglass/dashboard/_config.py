@@ -6,7 +6,7 @@ import os
 import re
 from typing import Any
 
-ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+ENV = re.compile(r"\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 
 def tables(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
@@ -35,10 +35,13 @@ def number(table: dict[str, Any], key: str, default: float, where: str) -> float
 
 
 def expand(value: Any, where: str) -> Any:
-    """``value`` with ``${NAME}`` / ``${NAME:-default}`` filled in, throughout."""
+    """``value`` with ``${NAME}`` / ``${NAME:-default}`` filled in, throughout;
+    ``$${`` stands for a literal ``${``."""
     if isinstance(value, str):
 
         def fill(match: re.Match[str]) -> str:
+            if match.group(0) == "$${":  # an escape: a literal ${
+                return "${"
             name, default = match.groups()
             if (found := os.environ.get(name)) is not None:
                 return found

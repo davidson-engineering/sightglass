@@ -12,6 +12,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
+from ._poll import Failed, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -110,32 +111,12 @@ class RestSource:
         endpoint: Endpoint,
         queue: asyncio.Queue[Update],
     ) -> None:
-        loop = asyncio.get_running_loop()
-        every = endpoint.interval or self.interval
-        down = False
-        showing: set[str] = set()  # the ids with a valid value on display
-        due = loop.time()
-        while True:
-            try:
-                reply = await self._fetch(session, endpoint)
-            except _Failed as failure:
-                if not down:
-                    logger.warning("%s: %s; will keep trying", endpoint.url, failure)
-                down = True
-                reply = {}
-            else:
-                if down:
-                    logger.info("%s is answering again", endpoint.url)
-                down = False
-            valid = {id: value for id, value in reply.items() if value is not None}
-            update = {**valid, **dict.fromkeys(showing - valid.keys(), BLANK)}
-            showing = set(valid)
-            if update:
-                queue.put_nowait(update)
-            # Due one interval after the last was due, so a slow reply doesn't
-            # lower the rate; after a long stall, start counting from now.
-            due = max(due + every, loop.time())
-            await asyncio.sleep(due - loop.time())
+        await poll(
+            lambda: self._fetch(session, endpoint),
+            endpoint.interval or self.interval,
+            queue,
+            endpoint.url,
+        )
 
     async def _fetch(
         self, session: aiohttp.ClientSession, endpoint: Endpoint
@@ -143,28 +124,19 @@ class RestSource:
         try:
             async with session.get(endpoint.url) as response:
                 if not response.ok and response.status not in endpoint.accept:
-                    raise _Failed(f"HTTP {response.status} {response.reason}")
-                body = await response.content.read(self.max_bytes + 1)
+                    raise Failed(f"HTTP {response.status} {response.reason}")
+                body = await read_body(response, self.max_bytes)
         except (aiohttp.ClientError, TimeoutError) as error:
-            raise _Failed(str(error) or type(error).__name__) from None
-        if len(body) > self.max_bytes:
-            raise _Failed(f"reply over {self.max_bytes} bytes")
+            raise Failed(str(error) or type(error).__name__) from None
         try:
             document = json.loads(body)
         except ValueError as error:
-            raise _Failed(f"not JSON: {error}") from None
+            raise Failed(f"not JSON: {error}") from None
         return extract(document, endpoint)
 
     def __repr__(self) -> str:
         urls = ", ".join(e.url for e in self.endpoints)
         return f"RestSource({urls})"
-
-
-class _Failed(Exception):
-    """A poll that produced no values; the message says why."""
-
-
-BLANK = ""  # shows as nothing, and is a gap, not a number, in a plot
 
 
 def extract(document: Any, endpoint: Endpoint) -> Update:
@@ -178,7 +150,7 @@ def extract(document: Any, endpoint: Endpoint) -> Update:
         ):
             document = document[int(part)]
         else:
-            raise _Failed(f"no {endpoint.select!r} in the reply")
+            raise Failed(f"no {endpoint.select!r} in the reply")
     values: dict[str, Any] = {}
     _flatten(document, endpoint.prefix, endpoint.key, values)
     return values

@@ -16,7 +16,7 @@ every ``data-bind`` on a page does.
 from __future__ import annotations
 
 import html
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ..elements import Element, TextElement
@@ -92,16 +92,10 @@ def build(table: dict[str, Any], index: int) -> list[Panel]:
 
 def _named(panel: Panel, name: str) -> Panel:
     """``panel`` with ``{name}`` in its title and ids replaced by ``name``."""
-    return Panel(
-        panel.type,
-        panel.title.replace("{name}", name),
-        tuple(i.replace("{name}", name) for i in panel.ids),
-        panel.ranges,
-        panel.mode,
-        panel.units,
-        panel.precision,
-        panel.low,
-        panel.high,
+    return replace(
+        panel,
+        title=panel.title.replace("{name}", name),
+        ids=tuple(i.replace("{name}", name) for i in panel.ids),
     )
 
 
@@ -196,7 +190,7 @@ def span(seconds: float) -> str:
         if seconds % size == 0 and (seconds >= size):
             count = int(seconds // size)
             return f"{count} {unit}" + ("" if count == 1 else "s")
-    return f"{seconds:g} seconds"
+    return f"{seconds:.15g} seconds"
 
 
 def draw(panel: Panel) -> str:
@@ -225,7 +219,7 @@ def _draw_timeseries(panel: Panel) -> str:
         ids = html.escape(" ".join(panel.ids), quote=True)
         plots.append(
             f'      <div class="{classes}" data-plot="{ids}"{mode} '
-            f'data-seconds="{seconds:g}"></div>'
+            f'data-seconds="{seconds:.15g}"></div>'
         )
     return _frame(panel, "\n".join(plots))
 
@@ -250,7 +244,8 @@ def _draw_lamp(panel: Panel) -> str:
 def _draw_gauge(panel: Panel) -> str:
     id = html.escape(panel.ids[0], quote=True)
     bar = (
-        f'      <div class="bar" style="--min: {panel.low:g}; --max: {panel.high:g}">'
+        f'      <div class="bar" style="--min: {panel.low:.15g}; '
+        f'--max: {panel.high:.15g}">'
         f'<div class="fill" data-bind="{id}" data-mode="var"></div></div>'
     )
     return _frame(panel, f"{_reading_html(panel)}\n{bar}")

@@ -13,7 +13,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
-from .rest import BLANK, _Failed
+from ._poll import Failed, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -102,29 +102,7 @@ class InfluxSource:
     async def _poll(
         self, session: aiohttp.ClientSession, queue: asyncio.Queue[Update]
     ) -> None:
-        loop = asyncio.get_running_loop()
-        down = False
-        showing: set[str] = set()
-        due = loop.time()
-        while True:
-            try:
-                reply = await self._fetch(session)
-            except _Failed as failure:
-                if not down:
-                    logger.warning("%s: %s; will keep trying", self.url, failure)
-                down = True
-                reply = {}
-            else:
-                if down:
-                    logger.info("%s is answering again", self.url)
-                down = False
-            valid = {id: value for id, value in reply.items() if value is not None}
-            update = {**valid, **dict.fromkeys(showing - valid.keys(), BLANK)}
-            showing = set(valid)
-            if update:
-                queue.put_nowait(update)
-            due = max(due + self.interval, loop.time())
-            await asyncio.sleep(due - loop.time())
+        await poll(lambda: self._fetch(session), self.interval, queue, self.url)
 
     async def _fetch(self, session: aiohttp.ClientSession) -> Update:
         try:
@@ -133,15 +111,13 @@ class InfluxSource:
                 params={"org": self.org},
                 data=self.query.encode(),
             ) as response:
-                body = await response.content.read(self.max_bytes + 1)
+                body = await read_body(response, self.max_bytes)
                 if not response.ok:
-                    raise _Failed(
+                    raise Failed(
                         f"HTTP {response.status} {_message(body) or response.reason}"
                     )
         except (aiohttp.ClientError, TimeoutError) as error:
-            raise _Failed(str(error) or type(error).__name__) from None
-        if len(body) > self.max_bytes:
-            raise _Failed(f"reply over {self.max_bytes} bytes")
+            raise Failed(str(error) or type(error).__name__) from None
         return rows(body.decode("utf-8", errors="replace"), self.id_from, self.prefix)
 
     def __repr__(self) -> str:
@@ -205,7 +181,7 @@ def rows(text: str, id_from: Sequence[str], prefix: str = "") -> Update:
             header = row
             continue
         if header[:2] == ["error", "reference"]:
-            raise _Failed(f"the query failed: {row[0]}")
+            raise Failed(f"the query failed: {row[0]}")
         if "_value" not in header:
             continue
         cells = dict(zip(header, row, strict=False))
