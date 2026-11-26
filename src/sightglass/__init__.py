@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from .sources.zeromq import ZmqSource
     from .web import WebDashboard
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Classes that need an optional dependency are imported on first use.
 _OPTIONAL = {
