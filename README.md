@@ -37,10 +37,10 @@ a screen function of its own ([screen.py](https://github.com/davidson-engineerin
   data is, and dim values while disconnected or (optionally) when a source
   goes quiet; a page fed by several sources can show which one stopped.
 - **Plain HTML dashboards.** Mark any element `data-bind="<id>"` and it stays
-  live; CSS can turn values into gauges, levels and lamps, like the panel
+  live; CSS can turn values into gauges, levels and lamps, like the page
   above. Otherwise a clean generic page is generated.
 - **See what actually arrives.** Press `` ` `` on any dashboard page for the
-  [signals panel](#signals-panel): every id received, its value as sent and a
+  [signals view](#signals-view): every id received, its value as sent and a
   chart of its last minute, so a misspelt id or a feed that stopped is obvious.
 
 ## Install
@@ -303,7 +303,7 @@ XAR or the TC1000 ADS setup) and add the route there.
 ## Dashboards from a config file
 
 `sightglass --config dashboard.toml` builds a whole dashboard from a file: the
-sources, and the panels that plot them. There is no page to write, and the file
+sources, and the panels that show them. There is no page to write, and the file
 can be kept apart from sightglass, one per dashboard.
 
 ```toml
@@ -316,30 +316,90 @@ prefix = "plant"                               # ids start "plant."
 select = "sensors"                             # start from this place in the JSON
 interval = 0.5                                 # seconds between polls
 
-[[panel]]                                      # a card per name
+[[panel]]                                      # a time series, a panel per name
 each = ["North", "South"]
 title = "{name}"
 ids = ["plant.{name}.value.*"]                 # * stands for any characters
 ranges = [300, 60]                             # seconds: 5 minutes, then 1
 ```
 
-The page is a dark, large-text layout for reading from across a room: cards
-wrap like Grafana's panels (each at least `card_width` pixels wide, 520 by
-default, so the count per row follows the screen), the last row's cards grow to
-fill it, and rows share the height. Each card plots its ids over every range,
-the longest at the top and the shortest biggest. It is one screen with nothing
-to scroll. The dashboard keeps history only for the ids its panels plot, and its
-page opens no live-values connection, so a source with thousands of ids costs
-little more than polling it.
+The words, which the code, the config and these docs all use:
+
+| Term | Meaning |
+| --- | --- |
+| **dashboard** | one page, described by one config file; run one `sightglass --config` per dashboard |
+| **source** | where values come from: a `[[source]]` of a `type` (`rest`, `ads`, `zmq`, `serial`, `influxdb`) |
+| **id** | a value's name, such as `plant.North.value.0.1`; sources make them and panels show them |
+| **section** | a titled group of panels: `[[section]]`, with its panels as `[[section.panel]]` |
+| **panel** | one tile of the page: a `[[panel]]` of a `type` (`timeseries`, `value`, `lamp`, `gauge`) |
+| **plot** | what a `timeseries` panel draws: one per range, from the dashboard's history |
+| **range** | the seconds of history a plot covers |
+| **element** | the monitor's own display model (`TextElement`, `RangeBar`, ...) that hand-written pages bind; a panel is not one, but a `value` panel with `precision` declares one |
+
+The page is a dark, large-text layout for reading from across a room. Sections
+stack from top to bottom, each with its heading if it has a `title`; a section
+asks for height by its tallest panel, so a row of readings is short and a row
+of plots is tall. Panels wrap like Grafana's (each at least `panel_width`
+pixels wide, 520 by default, and readings 60% of that, so the count per row
+follows the screen), the last row's panels grow to fill it, and rows share the
+height. It is one screen with nothing to scroll. Panels written at the top
+level, with no `[[section]]`, are one section without a heading.
+
+### Panels
+
+| `type` | Shows | Keys |
+| --- | --- | --- |
+| `timeseries` (the default) | `ids` against time: a plot per range, the longest at the top and the shortest biggest | `ids` (id patterns, `*` for any characters), `ranges` (seconds, default `[300, 60]`), `mode` (`"lines"`, or `"heatmap"`, a row per id, for hundreds of ids) |
+| `value` | one id's current value as large text | `id`, `units`, `precision` (decimals) |
+| `lamp` | one id as a light: on for `true`, non-zero and `"on"`, off otherwise | `id` |
+| `gauge` | one id as a bar between a minimum and a maximum, with the value above it | `id`, `min` (default 0), `max` (default 100), `units`, `precision` |
+
+Every panel also takes `title`, and `each`: a list of names that makes one
+panel per name, with `{name}` replaced in the title and in `id` or `ids`. A
+`timeseries` takes patterns, because it plots many; the others take one exact
+`id`. An invalid value (`null` from a REST API, a series InfluxDB has stopped
+getting points for, a source that went down) is never left showing: a plot has a
+gap, a `value` is blank, a `lamp` is off and a `gauge` is empty.
+
+```toml
+[[section]]
+title = "Now"
+
+[[section.panel]]
+type = "gauge"
+title = "Pressure"
+id = "plc.pressure"
+units = "bar"
+max = 10
+
+[[section.panel]]
+type = "lamp"
+each = ["A", "B"]
+title = "Pump {name}"
+id = "plc.pump{name}.running"
+
+[[section]]
+title = "Last 5 minutes"
+
+[[section.panel]]
+ids = ["plc.pressure"]
+ranges = [300]
+```
+
+The dashboard keeps history only for the ids its `timeseries` panels plot. A
+dashboard of plots alone opens no live-values connection, so a source with
+thousands of ids costs little more than polling it. A `value`, `lamp` or
+`gauge` needs the live connection, which sends every id the source makes to the
+page, so keep those dashboards to sources with a few hundred ids.
 
 | Key | Meaning |
 | --- | --- |
-| `title`, `history`, `max_elements`, `card_width` | the page heading; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a card |
+| `title`, `version`, `history`, `max_elements`, `panel_width` | the page heading; a label for this dashboard's own version, shown beside the title; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a panel |
 | `[[source]]` | one per source, of a `type`: `rest`, `ads`, `zmq`, `serial` or `influxdb`; their keys are below |
-| `[[panel]]` | `title`, `ids`, `ranges` (default `[300, 60]`), `mode` (`"lines"`, or `"heatmap"` for many ids), `each` (a list of names: one card per name, `{name}` in the title and ids) |
+| `[[section]]`, `[[panel]]` | as above |
 
 Sources, and the keys each takes (any number, of any mix; every id they make
-can be plotted by a panel):
+can be shown by a panel):
 
 | `type` | Keys |
 | --- | --- |
@@ -418,7 +478,7 @@ Object values are flattened, so a `RangeBar` binds as `<id>.text` and
 (`.lcd`, `.lcd-field`) and LED (`.led`, `.led-red`, `.led-amber`) styles.
 Files in `static_dir` are served under `/static/`.
 
-#### Signals panel
+#### Signals view
 
 Every page that loads `sightglass.js` (the generic page, the launch demo,
 yours) has a panel for checking what a feed sends: press `` ` `` (or click
@@ -431,7 +491,7 @@ of each half second, so a fast swing isn't lost, and booleans and on/off chart
 as steps. Type to filter by id; `` ` `` or Escape closes it. It streams over a
 WebSocket of its own (`/ws/signals`) only while open.
 
-![The signals panel over the launch demo: every id with its value and a chart of the last minute, from the end of the countdown through liftoff](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/signals-panel.png)
+![The signals view over the launch demo: every id with its value and a chart of the last minute, from the end of the countdown through liftoff](https://raw.githubusercontent.com/davidson-engineering/sightglass/main/docs/signals-panel.png)
 
 #### History and value-vs-time plots
 
@@ -611,7 +671,7 @@ install beyond [uv](https://docs.astral.sh/uv/):
 | Example | Shows | |
 | --- | --- | --- |
 | Demo | every kind of display | `uvx --from "sightglass[web]" sightglass --demo --open` |
-| Launch control | the page above: a custom panel fed by three programs | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#the-showcase-launch-control) |
+| Launch control | the page above: a custom page fed by three programs | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#the-showcase-launch-control) |
 | 1. Hello | a Python program with `start()` and `set()` | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#1-hello-dashboard) |
 | 2. System monitor | this computer, live: charts, bars, a table | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#2-system-monitor) |
 | 3. From the shell | any language, over HTTP with curl | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#3-from-the-shell) |
@@ -619,7 +679,7 @@ install beyond [uv](https://docs.astral.sh/uv/):
 | 5. Many processes | several programs, one dashboard, with `Client` | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#5-many-processes-one-dashboard) |
 | 6. Docker | deployed as a service, fed over the network | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#6-deploy-with-docker) |
 | 7. Terminal | drawn in the terminal | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#7-in-the-terminal) |
-| 8. Custom panel | a segment-display panel, over serial | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#8-a-custom-panel-and-a-serial-device) |
+| 8. Custom page | a segment-display page, over serial | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#8-a-custom-panel-and-a-serial-device) |
 | 9. Beckhoff PLC | a TwinCAT PLC over ADS, from an interface file | [run](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#9-a-beckhoff-plc-over-ads) |
 
 ## Extending

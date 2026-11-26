@@ -16,7 +16,7 @@ prefix = "grid"          # ids start "grid."
 select = "arrays"        # start from this place in the JSON
 interval = 0.2           # seconds between polls
 
-# What to plot: a card per name, a plot per range (seconds), longest on top,
+# What to plot: a panel per name, a plot per range (seconds), longest on top,
 # the shortest biggest. Each id is "grid.<name>.value.<row>.<column>"; `*`
 # stands for any characters, so this is every cell of row 0.
 [[panel]]

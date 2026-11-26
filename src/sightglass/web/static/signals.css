@@ -1,5 +1,5 @@
 /*
- * The signals panel (signals.js), inside its shadow root: nothing here
+ * The signals view (signals.js), inside its shadow root: nothing here
  * reaches the page, and nothing from the page reaches in but the --crt-*
  * colours and fonts of the terminal theme (terminal.css), which it uses when
  * the page is in that theme.
@@ -431,7 +431,7 @@ tbody tr:last-child > * {
     filter: drop-shadow(0 0 3px rgb(92 255 138 / 0.6));
   }
 
-  /* The page's scanlines are under the panel (it's drawn above everything): its own. */
+  /* The page's scanlines are under the view (it's drawn above everything): its own. */
   :host([data-theme="terminal"][data-crt="on"]) dialog::after {
     content: "";
     position: absolute;

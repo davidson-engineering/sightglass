@@ -1,7 +1,7 @@
 /* The default look of a dashboard built from a config file (sightglass --config):
    a dark page for reading from across a room. One screen and no scrolling:
-   cards wrap like Grafana's panels, each at least --card-width wide, so the
-   number per row follows the screen's width and the cards of the last row grow
+   panels wrap like Grafana's, each at least --panel-width wide, so the
+   number per row follows the screen's width and the panels of the last row grow
    to share what is left; rows share the height equally. Text is sized from the
    screen's height (vmin), so it scales with the screen. */
 
@@ -15,7 +15,7 @@
   /* A plot draws its labels in one weight, so name a heavier face. */
   --font-plot: "Bahnschrift SemiBold", "Bahnschrift", "DIN Alternate",
     "Segoe UI Semibold", "Segoe UI", Arial, sans-serif;
-  /* The colour of each time range of a panel, longest first. */
+  /* The colour of each time range of a timeseries panel, longest first. */
   --range-0: #4fd1ff;
   --range-1: #ffd166;
   --range-2: #86efac;
@@ -44,20 +44,48 @@ h1 { margin: 0; font-size: clamp(16px, 1.9vmin, 40px); font-weight: 700; letter-
 header span { margin-left: auto; color: #94a3b8; font-size: clamp(13px, 1.5vmin, 32px); }
 header b { font-weight: 700; }
 
-.grid {
-  --card-width: 520px;
+/* The page is sections, stacked; a section is panels, wrapping. A section
+   asks for height by its tallest panel (--weight: 3 for a plot, 1 for a
+   reading), so a row of readings is short and a row of plots is tall. */
+main {
   flex: 1;
   min-height: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 1vmin;
-  overflow-y: auto; /* only if the cards can't fit at their least height */
+  overflow-y: auto; /* only if the panels can't fit at their least height */
 }
 
-section {
-  flex: 1 1 var(--card-width);
+main > section {
+  flex: var(--weight, 3) 1 0px;
+  min-height: min-content; /* never smaller than its panels' least heights */
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vmin;
+}
+
+h2 {
+  margin: 0;
+  color: #94a3b8;
+  font-size: clamp(14px, 2vmin, 44px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panels {
+  --panel-width: 520px;
+  flex: 1;
+  min-height: min-content;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1vmin;
+}
+
+.panel {
+  flex: 1 1 var(--panel-width);
   min-width: 0;
-  min-height: 180px; /* rows share the rest of the height equally */
+  min-height: 120px; /* rows share the rest of the height equally */
   display: flex;
   flex-direction: column;
   gap: 0.6vmin;
@@ -66,8 +94,11 @@ section {
   border: 1px solid #2a3544;
   border-radius: 8px;
 }
+.panel.timeseries { min-height: 180px; }
+/* Readings are narrower than plots: more of them fit in a row. */
+.panel:not(.timeseries) { flex-basis: calc(var(--panel-width) * 0.6); }
 
-h2 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-height: 1.1; letter-spacing: 0.01em; }
+h3 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-height: 1.1; letter-spacing: 0.01em; }
 
 /* The longest range is the smallest plot, and the shortest gets most of the
    card. A zero base keeps a plot's canvas from setting its row's height. */
@@ -85,3 +116,53 @@ h2 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-he
 .range-1 { color: var(--range-1); }
 .range-2 { color: var(--range-2); }
 .range-3 { color: var(--range-3); }
+
+/* A value: the number, as large as the panel allows, and its units beside it. */
+.reading {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.4em;
+  align-self: stretch;
+  font-size: clamp(36px, 10vmin, 240px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--range-0);
+}
+.reading small { font-size: 0.4em; font-weight: 600; color: #94a3b8; }
+
+/* A lamp: dark until the id is on. */
+.light {
+  flex: none;
+  align-self: center;
+  width: clamp(36px, 9vmin, 200px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #1f2937;
+  border: 2px solid #374151;
+}
+.light[data-state="on"] {
+  background: #4ade80;
+  border-color: #bbf7d0;
+  box-shadow: 0 0 2.4vmin #4ade80;
+}
+.lamp { align-items: center; justify-content: center; }
+
+/* A gauge: a bar filled from --min to --max by its id's number (--value is
+   unset when there is none, so an invalid reading draws an empty bar). */
+.bar {
+  flex: none;
+  height: 2.6vmin;
+  min-height: 14px;
+  background: #1f2937;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.fill {
+  height: 100%;
+  width: clamp(0%, calc((var(--value, var(--min)) - var(--min)) / (var(--max) - var(--min)) * 100%), 100%);
+  background: var(--range-0);
+}

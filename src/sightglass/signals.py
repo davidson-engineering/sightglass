@@ -1,5 +1,5 @@
 """Every value a monitor has accepted, by id, with its last minute: what the
-dashboard's signals panel shows, for checking what a feed actually sends.
+dashboard's signals view shows, for checking what a feed actually sends.
 
 A signal is an id as it was sent (``"X.velocity"``, ``"table.row.column"``)
 and its value as sent, before an element scales or formats it. History is

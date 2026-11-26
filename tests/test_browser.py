@@ -267,7 +267,7 @@ async def test_generic_page_draws_declared_and_new_elements(page, serve):
     await expect(page.locator("#connection")).to_have_text("Live")
 
 
-async def test_signals_panel_lists_every_value_sent_with_its_last_minute(page, serve):
+async def test_signals_view_lists_every_value_sent_with_its_last_minute(page, serve):
     monitor = Monitor()
     monitor.add(RangeBar("speed", max_value=200, units="km/h"))
     monitor.update({"speed": 50, "axis10.pos": 2, "axis2.pos": 1, "status": "ok"})
@@ -276,14 +276,14 @@ async def test_signals_panel_lists_every_value_sent_with_its_last_minute(page, s
     await page.goto(serve(None, monitor))
     await page.locator("[data-signals-open]").click()
 
-    panel = page.locator("sightglass-signals")  # locators reach into its shadow root
-    await expect(panel.locator("dialog")).to_be_visible()
-    await expect(panel).to_have_attribute("data-scheme", "system")  # light or dark
-    rows = panel.locator("tbody tr")
+    view = page.locator("sightglass-signals")  # locators reach into its shadow root
+    await expect(view.locator("dialog")).to_be_visible()
+    await expect(view).to_have_attribute("data-scheme", "system")  # light or dark
+    rows = view.locator("tbody tr")
     await expect(rows.locator("th")).to_have_text(  # numbers in ids count as numbers
         ["axis2.pos", "axis10.pos", "speed", "status"]
     )
-    await expect(panel.locator(".count")).to_have_text("4")
+    await expect(view.locator(".count")).to_have_text("4")
     speed = rows.filter(has_text="speed")
     await expect(speed.locator(".value")).to_have_text("50")  # not "50.00 km/h"
     await expect(speed.locator("path")).to_have_attribute("d", re.compile(r"^M"))
@@ -296,22 +296,22 @@ async def test_signals_panel_lists_every_value_sent_with_its_last_minute(page, s
     await expect(rows).to_have_count(5)
 
     await page.keyboard.type("AXIS")  # typing filters, by id, ignoring case
-    await expect(panel.locator("input")).to_have_value("AXIS")
-    await expect(panel.locator(".count")).to_have_text("2 of 5")
-    await expect(panel.locator("tbody tr:not([hidden]) th")).to_have_text(
+    await expect(view.locator("input")).to_have_value("AXIS")
+    await expect(view.locator(".count")).to_have_text("2 of 5")
+    await expect(view.locator("tbody tr:not([hidden]) th")).to_have_text(
         ["axis2.pos", "axis10.pos"]
     )
     await page.keyboard.type("x")
-    empty = panel.locator(".empty")
+    empty = view.locator(".empty")
     await expect(empty).to_have_text("No signal matches \u201cAXISx\u201d.")
 
-    await panel.locator(".close").click()
-    await expect(panel.locator("dialog")).to_be_hidden()
+    await view.locator(".close").click()
+    await expect(view.locator("dialog")).to_be_hidden()
     feed = next(s for s in sockets if s.url.endswith("/ws/signals"))
     await until(feed.is_closed)  # nothing streams while it's closed
 
 
-async def test_signals_panel_charts_are_one_line_forward_in_time(page, serve):
+async def test_signals_view_charts_are_one_line_forward_in_time(page, serve):
     """A switch flipping, or a value swinging within half a second, is one line
     through its lowest and highest values: never an outline doubling back."""
     monitor = Monitor()
@@ -331,7 +331,7 @@ async def test_signals_panel_charts_are_one_line_forward_in_time(page, serve):
     assert xs == sorted(xs)  # never back over itself
 
 
-async def test_signals_panel_opens_on_any_page_with_the_backquote_key(page, serve):
+async def test_signals_view_opens_on_any_page_with_the_backquote_key(page, serve):
     monitor = Monitor()
     monitor.set("pump", "on")
     head = (
@@ -347,23 +347,23 @@ async def test_signals_panel_opens_on_any_page_with_the_backquote_key(page, serv
 
     await note.blur()
     await page.keyboard.press("Backquote")
-    panel = page.locator("sightglass-signals")
-    await expect(panel.locator("dialog")).to_be_visible()
-    await expect(panel.locator("tbody th")).to_have_text(["pump"])
-    await expect(panel.locator("tbody .value")).to_have_text("on")
-    await expect(panel.locator("tbody path")).to_have_attribute("d", re.compile(r"^M"))
+    view = page.locator("sightglass-signals")
+    await expect(view.locator("dialog")).to_be_visible()
+    await expect(view.locator("tbody th")).to_have_text(["pump"])
+    await expect(view.locator("tbody .value")).to_have_text("on")
+    await expect(view.locator("tbody path")).to_have_attribute("d", re.compile(r"^M"))
     # It follows the page: its theme, and its color-scheme (terminal.css: dark).
-    await expect(panel).to_have_attribute("data-theme", "terminal")
-    await expect(panel).to_have_attribute("data-scheme", "dark")
+    await expect(view).to_have_attribute("data-theme", "terminal")
+    await expect(view).to_have_attribute("data-scheme", "dark")
     await page.evaluate("document.documentElement.dataset.theme = 'classic'")
-    await expect(panel).to_have_attribute("data-theme", "classic")
+    await expect(view).to_have_attribute("data-theme", "classic")
 
     await page.keyboard.press("Backquote")
-    await expect(panel.locator("dialog")).to_be_hidden()
+    await expect(view.locator("dialog")).to_be_hidden()
     await page.keyboard.press("Backquote")  # and again
-    await expect(panel.locator("dialog")).to_be_visible()
+    await expect(view.locator("dialog")).to_be_visible()
     await page.keyboard.press("Escape")
-    await expect(panel.locator("dialog")).to_be_hidden()
+    await expect(view.locator("dialog")).to_be_hidden()
 
 
 async def test_launch_demo_page_comes_alive(page):
@@ -483,10 +483,10 @@ async def test_plot_draws_lowest_and_highest_value_over_the_lines(page, serve):
     ]
 
 
-async def test_a_config_dashboard_wraps_its_cards_and_fills_the_screen(
+async def test_a_config_dashboard_wraps_its_panels_and_fills_the_screen(
     page, serve, tmp_path
 ):
-    """Five panels at 1920 x 1080: three cards, then two that share the row, all
+    """Five panels at 1920 x 1080: three panels, then two that share the row, all
     of it on one screen with nothing to scroll; every plot has its values."""
     from sightglass.dashboard import load
 
@@ -511,7 +511,7 @@ ranges = [30, 10]
     for i in range(10):
         await expect(plots.nth(i)).to_have_attribute("data-plot-signals", "1")
     boxes = await page.evaluate(
-        "[...document.querySelectorAll('section')].map(e => {"
+        "[...document.querySelectorAll('.panel')].map(e => {"
         " const r = e.getBoundingClientRect();"
         " return [r.left, r.top, r.right, r.bottom] })"
     )
@@ -524,7 +524,7 @@ ranges = [30, 10]
     assert abs(first[-1][1] - second[-1][1]) < 2  # both rows reach the right edge
     assert max(box[2] for row in rows.values() for box in row) <= 1080
     assert await page.evaluate(
-        "(() => { const g = document.querySelector('.grid');"
+        "(() => { const g = document.querySelector('main');"
         " return g.scrollHeight <= g.clientHeight + 1 })()"
     )
 
@@ -714,3 +714,78 @@ async def test_load_demo_reads_a_plc_and_measures_itself(page):
     finally:
         process.terminate()
         await asyncio.wait_for(process.communicate(), 15)
+
+
+async def test_value_lamp_and_gauge_panels_follow_the_values_and_blank_when_invalid(
+    page, serve, tmp_path
+):
+    """A readings section above a plots section: the reading, the light and the
+    bar show live values, and an invalid one (blank) shows nothing, an unlit
+    light and an empty bar, never the last value."""
+    from sightglass.dashboard import load
+
+    config = tmp_path / "dashboard.toml"
+    config.write_text(
+        """
+[[source]]
+url = "http://127.0.0.1:1/x"
+[[section]]
+title = "Now"
+[[section.panel]]
+type = "gauge"
+title = "Pressure"
+id = "p.pressure"
+units = "bar"
+precision = 1
+min = 0
+max = 10
+[[section.panel]]
+type = "value"
+title = "Count"
+id = "p.count"
+[[section.panel]]
+type = "lamp"
+title = "Running"
+id = "p.running"
+[[section]]
+title = "Last minute"
+[[section.panel]]
+title = "Pressure"
+ids = ["p.pressure"]
+ranges = [60]
+"""
+    )
+    dashboard = load(config)
+    monitor = Monitor(history=60)
+    monitor.add(*dashboard.elements())
+    monitor.update({"p.pressure": 2.5, "p.count": 7, "p.running": True})
+    await page.set_viewport_size({"width": 1920, "height": 1080})
+    await page.goto(serve(None, monitor, html=dashboard.page()))
+    reading = page.locator(".gauge .reading span")
+    light = page.locator(".light")
+    await expect(reading).to_have_text("2.5")
+    await expect(page.locator(".value .reading span")).to_have_text("7")
+    await expect(light).to_have_attribute("data-state", "on")
+
+    async def fill() -> float:
+        return await page.evaluate(
+            "(() => { const f = document.querySelector('.fill');"
+            " return f.getBoundingClientRect().width"
+            " / f.parentElement.getBoundingClientRect().width })()"
+        )
+
+    assert abs(await fill() - 0.25) < 0.01  # 2.5 of 0 to 10
+    heights = await page.evaluate(
+        "[...document.querySelectorAll('main > section')]"
+        ".map(s => s.getBoundingClientRect().height)"
+    )
+    assert heights[1] > heights[0]  # the plots get more height than the readings
+    assert await page.evaluate(
+        "(() => { const m = document.querySelector('main');"
+        " return m.scrollHeight <= m.clientHeight + 1 })()"
+    )
+
+    monitor.update({"p.pressure": "", "p.running": ""})
+    await expect(reading).to_have_text("")
+    await expect(light).to_have_attribute("data-state", "off")
+    assert await fill() == 0  # applied with the reading

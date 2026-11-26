@@ -1,4 +1,4 @@
-"""A PLC's variables as time-series cards, described by dashboard.toml.
+"""A PLC's variables as time-series panels, described by dashboard.toml.
 
     uv run --all-extras python examples/ads_timeseries/dashboard.py            # a fake PLC
     PLC_TARGET=5.12.34.56.1.1 sightglass --config examples/ads_timeseries/dashboard.toml

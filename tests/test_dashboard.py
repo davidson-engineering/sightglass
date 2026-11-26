@@ -31,7 +31,7 @@ def write(tmp_path, text):
 def test_a_minimal_config_gets_the_defaults(tmp_path):
     dashboard = load(write(tmp_path, MINIMAL))
     assert dashboard.title == "Dashboard"
-    assert dashboard.max_elements == 2000 and dashboard.card_width == 520
+    assert dashboard.max_elements == 2000 and dashboard.panel_width == 520
     assert dashboard.history == 360  # the longest range, and a minute
     (panel,) = dashboard.panels
     assert panel.ranges == (300, 60) and panel.mode == "lines"
@@ -140,16 +140,16 @@ def test_a_bad_config_says_what_is_wrong_in_one_line(tmp_path, text, message):
     assert "\n" not in str(error.value)
 
 
-def test_the_page_has_a_card_per_panel_with_a_plot_per_range(tmp_path):
+def test_the_page_has_an_article_per_panel_with_a_plot_per_range(tmp_path):
     text = (
         'title = "A & B"\n'
         + MINIMAL.replace("a.*", 'a.*\\" onload=\\"x')
         + 'title = "<b>"\n'
     )
     page = load(write(tmp_path, text)).page()
-    assert "<title>A &amp; B</title>" in page and "<h2>&lt;b&gt;</h2>" in page
+    assert "<title>A &amp; B</title>" in page and "<h3>&lt;b&gt;</h3>" in page
     assert 'onload="x' not in page  # a quote in an id can't open an attribute
-    assert page.count("<section>") == 1 and page.count('class="plot ') == 2
+    assert page.count("<article") == 1 and page.count('class="plot ') == 2
     assert 'data-seconds="300"' in page and 'data-seconds="60"' in page
     assert 'class="plot range-1 last"' in page  # the shortest is the biggest
     assert "/_sightglass/dashboard.css" in page and "sightglass.js" in page

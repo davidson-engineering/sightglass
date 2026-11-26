@@ -148,7 +148,7 @@ def parser() -> argparse.ArgumentParser:
         "--config",
         metavar="FILE",
         help="a dashboard described by a TOML file: its sources, and the "
-        "panels that plot them (see the README); replaces the other inputs",
+        "panels that show them (see the README); replaces the other inputs",
     )
     inputs.add_argument(
         "--demo",
@@ -317,6 +317,7 @@ def config_build(
 
     dashboard = load(args.config)
     monitor = Monitor(max_elements=dashboard.max_elements)
+    monitor.add(*dashboard.elements())  # e.g. a number shown to fixed decimals
     # Only what the panels plot: the rest of a source's ids would cost memory
     # and time (8 bytes a slot each) for plots that never draw them.
     monitor.history = History(dashboard.history, only=dashboard.plotted())

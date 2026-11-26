@@ -23,9 +23,9 @@ of any ids, reduced to about one point per pixel of a plot::
 
     curl 'http://127.0.0.1:8080/history?id=MAIN.fTemp&id=MAIN.fFlow&seconds=60'
 
-Every page that loads ``sightglass.js`` also has a signals panel (the ` key):
+Every page that loads ``sightglass.js`` also has a signals view (the ` key):
 every value sent, by id, with a chart of its last minute, streamed over a
-second WebSocket (``/ws/signals``) only while the panel is open.
+second WebSocket (``/ws/signals``) only while the signals view is open.
 """
 
 from __future__ import annotations
@@ -405,7 +405,7 @@ class WebDashboard:
             pass
 
     async def _send_signals(self, ws: web.WebSocketResponse, monitor: Monitor) -> None:
-        """The signals panel's feed: every signal with its last minute, then the
+        """The signals view's feed: every signal with its last minute, then the
         signals that changed, with their slots since the previous message. A
         message goes out every slot even if nothing changed, so the page's
         charts keep moving with the server's clock."""

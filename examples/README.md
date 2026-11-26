@@ -157,13 +157,13 @@ uv run https://raw.githubusercontent.com/davidson-engineering/sightglass/main/ex
 `--zmq tcp://localhost:5556` reads [zmq_publisher.py](zmq_publisher.py)
 instead, and `--port /dev/ttyUSB0` a device sending binary frames.
 
-## 8. A custom panel (and a serial device)
+## 8. A custom page (and a serial device)
 
-A hand-built control panel with segment displays and LEDs, written in plain
+A hand-built control page with segment displays and LEDs, written in plain
 HTML with `data-bind` attributes. It reads a microcontroller over serial, or
 simulated data. [robot_dashboard/](robot_dashboard/)
 
-![Robot control panel](../docs/robot-dashboard.jpg)
+![Robot control page](../docs/robot-dashboard.jpg)
 
 ```bash
 git clone https://github.com/davidson-engineering/sightglass
@@ -172,7 +172,7 @@ uv run --all-extras examples/robot_dashboard/dashboard.py --simulate
 ```
 
 No microcontroller? On macOS or Linux, [fake_device.py](fake_device.py) creates
-a virtual serial port that streams to the panel, so you can exercise the real
+a virtual serial port that streams to the page, so you can exercise the real
 serial path: run `uv run --all-extras examples/fake_device.py` and pass the
 port it prints to the dashboard with `--port`.
 
@@ -198,15 +198,15 @@ and `SIGHTGLASS_ALLOW_WRITES=1`: see
 
 A whole dashboard in one TOML file: where the values come from (a web service
 that answers GET with JSON, polled five times a second) and what to plot. No
-code and no page to write. Each of five sensor arrays gets a card with lines
+code and no page to write. Each of five sensor arrays gets a panel with lines
 for its first row of cells over the last 5 minutes and, bigger, the last
 minute, on a dark page with large text for reading from across a room. The
-cards wrap like Grafana's panels as the screen changes size.
+panels wrap like Grafana's as the screen changes size.
 [rest_grid/dashboard.toml](rest_grid/dashboard.toml) is commented line by
 line. It needs no service of its own: `dashboard.py` starts a fake API
 ([rest_grid/fake_api.py](rest_grid/fake_api.py)) and points the file at it.
 
-![The sensor grid wall display: five cards, North, South, East, West and Roof, each plotting its sensors over the last 5 minutes and, larger, the last minute](../docs/rest-grid.webp)
+![The sensor grid wall display: five panels, North, South, East, West and Roof, each plotting its sensors over the last 5 minutes and, larger, the last minute](../docs/rest-grid.webp)
 
 ```bash
 git clone https://github.com/davidson-engineering/sightglass
@@ -217,7 +217,7 @@ uv run --all-extras examples/rest_grid/dashboard.py http://host:8000/api/arrays
 
 ### A PLC instead
 
-The same cards can plot any source. [ads_timeseries/](ads_timeseries/dashboard.toml)
+The same panels can show any source. [ads_timeseries/](ads_timeseries/dashboard.toml)
 reads a Beckhoff PLC over ADS: `uv run --all-extras examples/ads_timeseries/dashboard.py`
 starts a fake one (Linux and macOS) and shows three of its variables over the
 last minute and, bigger, the last ten seconds. Set `PLC_TARGET` (or edit the

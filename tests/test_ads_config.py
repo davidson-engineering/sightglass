@@ -44,7 +44,7 @@ def fake_plc():
     plc.server.stop()
 
 
-async def test_a_plc_feeds_a_time_series_card_from_a_config_file(fake_plc, tmp_path):
+async def test_a_plc_feeds_a_time_series_panel_from_a_config_file(fake_plc, tmp_path):
     fake_plc.add("GVL.fPressure", "REAL", struct.pack("<f", 2.5))
     fake_plc.add("GVL.fOther", "REAL", struct.pack("<f", 9.0))
     path = tmp_path / "press.toml"
@@ -63,7 +63,7 @@ async def test_a_plc_feeds_a_time_series_card_from_a_config_file(fake_plc, tmp_p
             with urllib.request.urlopen(base + route, timeout=5) as response:
                 return response.read().decode()
 
-        assert 'data-plot="GVL.fPressure"' in get("")  # the card
+        assert 'data-plot="GVL.fPressure"' in get("")  # the panel
         await until(
             lambda: (
                 3.5
@@ -77,7 +77,7 @@ async def test_a_plc_feeds_a_time_series_card_from_a_config_file(fake_plc, tmp_p
             ),
             within=10,
         )
-        # only what the card plots is kept as history
+        # only what the panel plots is kept as history
         other = json.loads(get("history?id=GVL.fOther&seconds=10&points=100"))
         assert not other["signals"].get("GVL.fOther")
     finally:

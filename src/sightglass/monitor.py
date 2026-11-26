@@ -123,7 +123,7 @@ class Monitor:
     only what, something changed.
 
     :attr:`signals` keeps every accepted value by the id it was sent to, as
-    sent, with its last minute: the dashboard's signals panel. With
+    sent, with its last minute: the dashboard's signals view. With
     ``history=seconds``, :attr:`history` keeps that long of every numeric
     one, in 50 ms slots, for value-vs-time plots (``GET /history``); it is
     None otherwise. Set it before the monitor starts.

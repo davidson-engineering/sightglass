@@ -1,11 +1,11 @@
-// The signals panel: every value the dashboard has accepted, by id, as sent
+// The signals view: every value the dashboard has accepted, by id, as sent
 // (before an element scales or formats it), with a chart of its last minute.
 // For checking what a feed actually sends. sightglass.js loads this module
-// the first time the panel opens: the ` key, or an element marked
-// data-signals-open. In the panel, ` and Escape close it, and typing filters
+// the first time the view opens: the ` key, or an element marked
+// data-signals-open. In the view, ` and Escape close it, and typing filters
 // the signals by id.
 //
-// The panel lives in a shadow root, so the page's CSS and its own stay apart.
+// The view lives in a shadow root, so the page's CSS and its own stay apart.
 // It follows the page's theme (html[data-theme], html[data-crt]) and its
 // color-scheme: dark on a dark-only page, otherwise as the system. While it
 // is open it streams /ws/signals: a snapshot with every signal's last minute
@@ -48,7 +48,7 @@ let retry = null;
 let ticker = null;
 let frame = 0;
 let observer = null;
-let loaded = false; // a snapshot has arrived since the panel opened
+let loaded = false; // a snapshot has arrived since the view opened
 
 let slots = 120; // per chart, from the server
 let slot = 0; // the newest slot the charts show
