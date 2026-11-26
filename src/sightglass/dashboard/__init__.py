@@ -19,7 +19,7 @@ a file and not a program::
     ranges = [300, 60]
 
 A **source** is where values come from (``sources.py``). A **panel** is one
-tile of the page, of a **type** (``panels.py``): ``timeseries`` plots ids over
+tile of the page, of a **type** (``panels.py``): ``trend`` plots ids over
 time, ``value`` shows one id as large text, ``lamp`` as a light and ``gauge``
 as a bar. A **section** is a titled group of panels (``[[section]]`` with
 ``[[section.panel]]`` inside); panels written at the top level are one
@@ -92,12 +92,7 @@ class Dashboard:
     def plotted(self) -> list[str]:
         """Every id pattern a panel plots: all the history the page needs."""
         return sorted(
-            {
-                i
-                for panel in self.panels
-                if panel.type == "timeseries"
-                for i in panel.ids
-            }
+            {i for panel in self.panels if panel.type == "trend" for i in panel.ids}
         )
 
     def elements(self) -> list[Element]:
@@ -129,7 +124,7 @@ def load(path: str | Path) -> Dashboard:
 
     ``[[panel]]``, of a ``type``, each with a ``title`` and ``each`` (a list
     of names that makes one panel per name, with ``{name}`` in the title and
-    ids replaced by it): ``timeseries`` (the default: ``ids``, id patterns
+    ids replaced by it): ``trend`` (the default: ``ids``, id patterns
     with ``*`` for any characters; ``ranges``, seconds, default ``[300, 60]``;
     ``mode``, ``"lines"`` or ``"heatmap"``), ``value`` (``id``, ``units``,
     ``precision``), ``lamp`` (``id``) and ``gauge`` (``id``, ``units``,

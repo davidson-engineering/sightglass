@@ -205,7 +205,7 @@ source (`fake_*.py`), so each runs with nothing else installed, and
 `dashboard.py`, which starts the stand-in and runs `sightglass --config` on the
 file. To use the real source, copy the file and change its `[[source]]`.
 
-Each of five sensor arrays gets a `timeseries` panel with lines for its first
+Each of five sensor arrays gets a `trend` panel with lines for its first
 row of cells over the last 5 minutes and, bigger, the last minute, on a dark
 page with large text for reading from across a room. The panels wrap like
 Grafana's as the screen changes size. [rest_grid/](rest_grid/dashboard.toml)
@@ -230,7 +230,7 @@ The same file format over a different source, and with every kind of panel,
 in two sections. [ads_press/](ads_press/dashboard.toml) reads a Beckhoff
 TwinCAT PLC over ADS: a `gauge` for pressure, `value` panels for the
 temperature and the parts count, a `lamp` for each of two flags, and below
-them `timeseries` panels of the pressure and temperature. The PLC's variable
+them `trend` panels of the pressure and temperature. The PLC's variable
 names are the ids. `ads_press/fake_plc.py` is a fake PLC; edit the file's
 `target` and `variables` (or set `PLC_TARGET`) to read a real one.
 
@@ -246,7 +246,7 @@ router, which can't reach it. A dashboard never writes to a PLC.
 
 [influx_cells/](influx_cells/dashboard.toml) reads an InfluxDB 2.x bucket of
 battery cells: the newest point of each series, one `gauge`, `value` and
-`lamp` per cell, and a `timeseries` panel of all the voltages. A series with
+`lamp` per cell, and a `trend` panel of all the voltages. A series with
 no point in the last `window` seconds goes blank (cell C is quiet for ten
 seconds in every forty), never its last value. The token comes from the
 environment, so it stays out of the file. `influx_cells/fake_influx.py` is a

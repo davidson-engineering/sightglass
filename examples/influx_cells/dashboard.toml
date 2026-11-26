@@ -62,7 +62,7 @@ id = "cell.{name}.ok"
 title = "Last 5 minutes"
 
 [[section.panel]]
-type = "timeseries"
+type = "trend"
 title = "Voltage, all cells"
 ids = ["cell.*.voltage"]
 ranges = [300, 60]

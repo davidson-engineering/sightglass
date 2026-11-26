@@ -26,7 +26,7 @@ def render(dashboard: Dashboard) -> str:
         f"started {dashboard.started}" if dashboard.started else "",
     ]
     meta = html.escape(" · ".join(part for part in identity if part))
-    shared = {p.ranges for p in dashboard.panels if p.type == "timeseries"}
+    shared = {p.ranges for p in dashboard.panels if p.type == "trend"}
     key = ""
     if len(shared) == 1:  # a legend only when every plot has the same ranges
         parts = (

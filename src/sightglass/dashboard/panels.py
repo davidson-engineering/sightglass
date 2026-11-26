@@ -2,7 +2,7 @@
 
 A panel is one tile of the page. Its type says what it shows:
 
-``timeseries``  one or more ids plotted against time, a plot per range
+``trend``  one or more ids plotted against time, a plot per range
 ``value``       one id's current value as large text
 ``lamp``        one id as an on/off light
 ``gauge``       one id as a bar between a minimum and a maximum
@@ -25,7 +25,7 @@ from ._config import only
 
 COMMON = {"type", "title", "each"}
 PANEL_KEYS = {
-    "timeseries": COMMON | {"ids", "ranges", "mode"},
+    "trend": COMMON | {"ids", "ranges", "mode"},
     "value": COMMON | {"id", "units", "precision"},
     "lamp": COMMON | {"id"},
     "gauge": COMMON | {"id", "units", "precision", "min", "max"},
@@ -33,19 +33,19 @@ PANEL_KEYS = {
 PANEL_TYPES = tuple(PANEL_KEYS)
 MODES = ("lines", "heatmap")
 COLOURS = 4  # range-0 ... range-3 in dashboard.css; more repeat
-WEIGHT = {"timeseries": 3}  # how much of a section's height a panel's row asks for
+WEIGHT = {"trend": 3}  # how much of a section's height a panel's row asks for
 
 
 @dataclass(frozen=True)
 class Panel:
-    """A tile. ``ids`` are id patterns for a ``timeseries`` (``*`` for any
+    """A tile. ``ids`` are id patterns for a ``trend`` (``*`` for any
     characters) and the one id for every other type."""
 
     type: str
     title: str
     ids: tuple[str, ...]
-    ranges: tuple[float, ...] = ()  # timeseries: seconds, longest first
-    mode: str = "lines"  # timeseries: "lines" or "heatmap"
+    ranges: tuple[float, ...] = ()  # trend: seconds, longest first
+    mode: str = "lines"  # trend: "lines" or "heatmap"
     units: str = ""  # value, gauge
     precision: int | None = None  # value, gauge: decimals shown
     low: float = 0.0  # gauge: the value at the bar's empty end
@@ -54,7 +54,7 @@ class Panel:
     @property
     def live(self) -> bool:
         """Whether it needs the page's live-values connection."""
-        return self.type != "timeseries"
+        return self.type != "trend"
 
     def elements(self) -> list[Element]:
         """The monitor elements it needs declared, if it needs any: a number
@@ -68,7 +68,7 @@ def build(table: dict[str, Any], index: int) -> list[Panel]:
     """The panels a ``[[panel]]`` table stands for: one, or one per name in
     ``each``."""
     where = f"[[panel]] {index + 1}"
-    kind = table.get("type", "timeseries")
+    kind = table.get("type", "trend")
     if kind not in PANEL_TYPES:
         raise ValueError(
             f"type in {where} must be {' or '.join(PANEL_TYPES)}, not {kind!r}"
@@ -99,7 +99,7 @@ def _named(panel: Panel, name: str) -> Panel:
     )
 
 
-def _timeseries(table: dict[str, Any], where: str) -> dict[str, Any]:
+def _trend(table: dict[str, Any], where: str) -> dict[str, Any]:
     ids = table.get("ids")
     if (
         not isinstance(ids, list)
@@ -174,7 +174,7 @@ def _gauge(table: dict[str, Any], where: str) -> dict[str, Any]:
 
 
 PANELS = {
-    "timeseries": _timeseries,
+    "trend": _trend,
     "value": _value,
     "lamp": _lamp,
     "gauge": _gauge,
@@ -209,7 +209,7 @@ def _frame(panel: Panel, body: str) -> str:
     )
 
 
-def _draw_timeseries(panel: Panel) -> str:
+def _draw_trend(panel: Panel) -> str:
     plots = []
     for i, seconds in enumerate(panel.ranges):
         classes = f"plot range-{i % COLOURS}" + (
@@ -252,7 +252,7 @@ def _draw_gauge(panel: Panel) -> str:
 
 
 DRAW = {
-    "timeseries": _draw_timeseries,
+    "trend": _draw_trend,
     "value": _draw_value,
     "lamp": _draw_lamp,
     "gauge": _draw_gauge,

@@ -16,11 +16,11 @@ prefix = "grid"          # ids start "grid."
 select = "arrays"        # start from this place in the JSON
 interval = 0.2           # seconds between polls
 
-# What to show: a timeseries panel per name (`each`), a plot per range
+# What to show: a trend panel per name (`each`), a plot per range
 # (seconds), longest on top, the shortest biggest. Each id is "grid.<name>.value.<row>.<column>"; `*`
 # stands for any characters, so this is every cell of row 0.
 [[panel]]
-type = "timeseries"      # the default type, written out
+type = "trend"      # the default type, written out
 each = ["North", "South", "East", "West", "Roof"]
 title = "{name}"
 ids = ["grid.{name}.value.0.*"]

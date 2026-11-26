@@ -15,7 +15,7 @@
   /* A plot draws its labels in one weight, so name a heavier face. */
   --font-plot: "Bahnschrift SemiBold", "Bahnschrift", "DIN Alternate",
     "Segoe UI Semibold", "Segoe UI", Arial, sans-serif;
-  /* The colour of each time range of a timeseries panel, longest first. */
+  /* The colour of each time range of a trend panel, longest first. */
   --range-0: #4fd1ff;
   --range-1: #ffd166;
   --range-2: #86efac;
@@ -94,9 +94,9 @@ h2 {
   border: 1px solid #2a3544;
   border-radius: 8px;
 }
-.panel.timeseries { min-height: 180px; }
+.panel.trend { min-height: 180px; }
 /* Readings are narrower than plots: more of them fit in a row. */
-.panel:not(.timeseries) { flex-basis: calc(var(--panel-width) * 0.6); }
+.panel:not(.trend) { flex-basis: calc(var(--panel-width) * 0.6); }
 
 h3 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-height: 1.1; letter-spacing: 0.01em; }
 

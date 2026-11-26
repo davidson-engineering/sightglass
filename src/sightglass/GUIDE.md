@@ -28,7 +28,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | A REST API that answers GET with JSON | `sightglass --rest http://host:8000/metrics` (repeat `--rest`; `--rest-interval`, `--rest-header 'X-Api-Key: ...'`), or `RestSource("http://host/metrics", interval=2)`; needs `[rest]` |
-| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb) and `[[panel]]` tables (timeseries, value, lamp, gauge; `[[section]]` to group them), no page to write; see the README |
+| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; see the README |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
 | Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 
@@ -234,8 +234,8 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | To show | Element | Update with |
 | --- | --- | --- |
 | a value or message | `TextElement(id, units="°C", format=TextFormat(precision=1))` | anything |
-| a trend | `Sparkline(id, points=60, scale=1 / 1024, units="KB/s")` | numbers |
-| a long trend of a fast value | `Sparkline(id, points=300, interval=1)`: one point a second | numbers |
+| a small line of recent values | `Sparkline(id, points=60, scale=1 / 1024, units="KB/s")` | numbers |
+| a longer line of a fast value | `Sparkline(id, points=300, interval=1)`: one point a second | numbers |
 | progress | `ProgressBar(id, total=100)` | a number |
 | a reading within limits | `RangeBar(id, min_value=0, max_value=100, units="mm")` | a number |
 | on/off | `IndicatorLamp(id)` | bool, 1/0, on/off |

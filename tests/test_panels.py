@@ -1,4 +1,4 @@
-"""The panel types of a config file (timeseries, value, lamp, gauge) and its
+"""The panel types of a config file (trend, value, lamp, gauge) and its
 sections."""
 
 import pytest
@@ -63,10 +63,10 @@ def test_every_type_reads_its_own_keys(tmp_path):
     assert (gauge.low, gauge.high) == (0.0, 10.0)
     assert (value.type, value.precision, value.units) == ("value", None, "")
     assert lamp.type == "lamp"
-    assert (series.type, series.ranges) == ("timeseries", (300, 60))  # the default type
+    assert (series.type, series.ranges) == ("trend", (300, 60))  # the default type
 
 
-def test_only_a_timeseries_needs_history_and_only_the_others_need_live_values(tmp_path):
+def test_only_a_trend_needs_history_and_only_the_others_need_live_values(tmp_path):
     found = dashboard(tmp_path, ALL)
     assert found.plotted() == ["plc.pressure"]
     assert 'data-values="off"' not in found.page()  # a gauge reads live values
@@ -117,7 +117,7 @@ def test_panels_at_the_top_level_are_one_section_without_a_heading(tmp_path):
 @pytest.mark.parametrize(
     ("text", "message"),
     [
-        ('[[panel]]\ntype = "pie"\nids = ["a"]', "type in .* must be timeseries"),
+        ('[[panel]]\ntype = "pie"\nids = ["a"]', "type in .* must be trend"),
         ('[[panel]]\ntype = "value"\nid = "a"\nranges = [5]', "unknown 'ranges'"),
         ('[[panel]]\ntype = "value"\nids = ["a"]', "unknown 'ids'"),
         ('[[panel]]\nid = "a"', "unknown 'id'"),

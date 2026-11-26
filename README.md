@@ -316,7 +316,7 @@ prefix = "plant"                               # ids start "plant."
 select = "sensors"                             # start from this place in the JSON
 interval = 0.5                                 # seconds between polls
 
-[[panel]]                                      # a time series, a panel per name
+[[panel]]                                      # a trend, a panel per name
 each = ["North", "South"]
 title = "{name}"
 ids = ["plant.{name}.value.*"]                 # * stands for any characters
@@ -331,8 +331,8 @@ The words, which the code, the config and these docs all use:
 | **source** | where values come from: a `[[source]]` of a `type` (`rest`, `ads`, `zmq`, `serial`, `influxdb`) |
 | **id** | a value's name, such as `plant.North.value.0.1`; sources make them and panels show them |
 | **section** | a titled group of panels: `[[section]]`, with its panels as `[[section.panel]]` |
-| **panel** | one tile of the page: a `[[panel]]` of a `type` (`timeseries`, `value`, `lamp`, `gauge`) |
-| **plot** | what a `timeseries` panel draws: one per range, from the dashboard's history |
+| **panel** | one tile of the page: a `[[panel]]` of a `type` (`trend`, `value`, `lamp`, `gauge`) |
+| **plot** | what a `trend` panel draws: one per range, from the dashboard's history |
 | **range** | the seconds of history a plot covers |
 | **element** | the monitor's own display model (`TextElement`, `RangeBar`, ...) that hand-written pages bind; a panel is not one, but a `value` panel with `precision` declares one |
 
@@ -349,7 +349,7 @@ level, with no `[[section]]`, are one section without a heading.
 
 | `type` | Shows | Keys |
 | --- | --- | --- |
-| `timeseries` (the default) | `ids` against time: a plot per range, the longest at the top and the shortest biggest | `ids` (id patterns, `*` for any characters), `ranges` (seconds, default `[300, 60]`), `mode` (`"lines"`, or `"heatmap"`, a row per id, for hundreds of ids) |
+| `trend` (the default) | `ids` against time: a plot per range, the longest at the top and the shortest biggest | `ids` (id patterns, `*` for any characters), `ranges` (seconds, default `[300, 60]`), `mode` (`"lines"`, or `"heatmap"`, a row per id, for hundreds of ids) |
 | `value` | one id's current value as large text | `id`, `units`, `precision` (decimals) |
 | `lamp` | one id as a light: on for `true`, non-zero and `"on"`, off otherwise | `id` |
 | `gauge` | one id as a bar between a minimum and a maximum, with the value above it | `id`, `min` (default 0), `max` (default 100), `units`, `precision` |
@@ -357,7 +357,7 @@ level, with no `[[section]]`, are one section without a heading.
 Two panels may show the same id, but not to different `precision`s (the monitor
 formats an id once). Every panel also takes `title`, and `each`: a list of names that makes one
 panel per name, with `{name}` replaced in the title and in `id` or `ids`. A
-`timeseries` takes patterns, because it plots many; the others take one exact
+`trend` takes patterns, because it plots many; the others take one exact
 `id`. An invalid value (`null` from a REST API, a series InfluxDB has stopped
 getting points for, a source that went down) is never left showing: a plot has a
 gap, a `value` is blank, a `lamp` is off and a `gauge` is empty.
@@ -387,7 +387,7 @@ ids = ["plc.pressure"]
 ranges = [300]
 ```
 
-The dashboard keeps history only for the ids its `timeseries` panels plot. A
+The dashboard keeps history only for the ids its `trend` panels plot. A
 dashboard of plots alone opens no live-values connection, so a source with
 thousands of ids costs little more than polling it. A `value`, `lamp` or
 `gauge` needs the live connection, which sends every id the source makes to the
