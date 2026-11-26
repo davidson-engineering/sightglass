@@ -12,7 +12,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
-from ._poll import Failed, poll, read_body
+from ._poll import Failed, parse, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -128,15 +128,21 @@ class RestSource:
                 body = await read_body(response, self.max_bytes)
         except (aiohttp.ClientError, TimeoutError) as error:
             raise Failed(str(error) or type(error).__name__) from None
-        try:
-            document = json.loads(body)
-        except ValueError as error:
-            raise Failed(f"not JSON: {error}") from None
-        return extract(document, endpoint)
+        return await parse(len(body), _document, body, endpoint)
 
     def __repr__(self) -> str:
         urls = ", ".join(e.url for e in self.endpoints)
         return f"RestSource({urls})"
+
+
+def _document(body: bytes, endpoint: Endpoint) -> Update:
+    """The ids in a reply's JSON: all of a poll's parsing, so it can be run off
+    the event loop."""
+    try:
+        document = json.loads(body)
+    except ValueError as error:
+        raise Failed(f"not JSON: {error}") from None
+    return extract(document, endpoint)
 
 
 def extract(document: Any, endpoint: Endpoint) -> Update:

@@ -1,11 +1,13 @@
-"""What the polling sources (REST, InfluxDB) share: reading a whole reply, and
-the loop that polls on a schedule and blanks what stopped being valid."""
+"""What the polling sources (REST, InfluxDB) share: reading a whole reply,
+parsing it without holding up the event loop, and the loop that polls on a
+schedule and blanks what stopped being valid."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 import aiohttp
 
@@ -14,6 +16,7 @@ from ..monitor import Update
 logger = logging.getLogger(__name__)
 
 BLANK = ""  # shows as nothing, and is a gap, not a number, in a plot
+OFF_LOOP_BYTES = 256 * 1024  # replies over this are parsed in a worker thread
 
 
 class Failed(Exception):
@@ -21,7 +24,10 @@ class Failed(Exception):
 
 
 async def read_body(response: aiohttp.ClientResponse, limit: int) -> bytes:
-    """The whole body of ``response``. A longer one is refused, not cut short."""
+    """The whole body of ``response``. A longer one is refused, not cut short,
+    and one that says it is too long is refused before any of it is read."""
+    if response.content_length is not None and response.content_length > limit:
+        raise Failed(f"reply over {limit} bytes")
     chunks: list[bytes] = []
     size = 0
     async for chunk in response.content.iter_chunked(64 * 1024):
@@ -30,6 +36,16 @@ async def read_body(response: aiohttp.ClientResponse, limit: int) -> bytes:
             raise Failed(f"reply over {limit} bytes")
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+async def parse(size: int, work: Callable[..., Update], *args: Any) -> Update:
+    """``work(*args)``, which parses a reply of ``size`` bytes. A big reply is
+    parsed in a worker thread, so what it holds up is the pure Python part of
+    the parse (``json.loads`` itself holds the interpreter for its whole call);
+    a small one is not worth a thread."""
+    if size <= OFF_LOOP_BYTES:
+        return work(*args)
+    return await asyncio.to_thread(work, *args)
 
 
 async def poll(

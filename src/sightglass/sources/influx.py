@@ -13,7 +13,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
-from ._poll import Failed, poll, read_body
+from ._poll import Failed, parse, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class InfluxSource:
                     )
         except (aiohttp.ClientError, TimeoutError) as error:
             raise Failed(str(error) or type(error).__name__) from None
-        return rows(body.decode("utf-8", errors="replace"), self.id_from, self.prefix)
+        return await parse(len(body), _reply, body, self.id_from, self.prefix)
 
     def __repr__(self) -> str:
         return f"InfluxSource({self.url})"
@@ -165,6 +165,12 @@ def _string(text: str) -> str:
         .replace("\t", "\\t")
     )
     return f'"{escaped}"'
+
+
+def _reply(body: bytes, id_from: Sequence[str], prefix: str) -> Update:
+    """The ids in a reply: all of a poll's parsing, so it can be run off the
+    event loop."""
+    return rows(body.decode("utf-8", errors="replace"), id_from, prefix)
 
 
 def rows(text: str, id_from: Sequence[str], prefix: str = "") -> Update:

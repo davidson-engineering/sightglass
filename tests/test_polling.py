@@ -48,11 +48,15 @@ async def server():
             raise web.HTTPInternalServerError()
         return web.json_response(big_json())
 
+    async def small_reply(request):
+        return web.json_response({"items": {"a": {"value": 1}}})
+
     async def influx_reply(request):
         return web.Response(text=big_csv(), content_type="application/csv")
 
     app = web.Application()
     app.router.add_get("/big", rest_reply)
+    app.router.add_get("/small", small_reply)
     app.router.add_post("/api/v2/query", influx_reply)
     found = TestServer(app)
     await found.start_server()
@@ -137,3 +141,43 @@ async def test_a_failure_is_logged_once_and_again_when_its_cause_changes(caplog)
         "svc: refused; will keep trying",
         "svc is answering again",
     ]
+
+
+async def test_a_reply_that_says_it_is_too_big_is_refused_before_it_is_read():
+    from types import SimpleNamespace
+
+    from sightglass.sources._poll import Failed, read_body
+
+    def never_read(size):
+        raise AssertionError("the body was read")
+
+    response = SimpleNamespace(
+        content_length=50_000_000, content=SimpleNamespace(iter_chunked=never_read)
+    )
+    with pytest.raises(Failed, match="reply over 1000 bytes"):
+        await read_body(response, 1000)
+
+
+async def test_a_big_reply_is_parsed_in_a_worker_thread_and_a_small_one_inline(
+    server, consume, monkeypatch
+):
+    """Parsing a few MB on the event loop stalls every other source and page."""
+    import threading
+
+    real = rest.extract
+    where: list[bool] = []
+
+    def extract(document, endpoint):
+        where.append(threading.current_thread() is threading.main_thread())
+        return real(document, endpoint)
+
+    monkeypatch.setattr(rest, "extract", extract)
+    monitor = Monitor(max_elements=COUNT + 10)
+    consume(monitor, RestSource(str(server.make_url("/big")), interval=0.5))
+    await until(lambda: where, within=20)
+    assert where[0] is False  # about 1 MB: off the loop
+
+    where.clear()
+    consume(monitor, RestSource(str(server.make_url("/small")), interval=0.5))
+    await until(lambda: where, within=10)
+    assert where[0] is True  # a few bytes: not worth a thread
