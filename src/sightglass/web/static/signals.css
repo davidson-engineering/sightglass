@@ -250,22 +250,55 @@ tbody tr:last-child > * {
   vector-effect: non-scaling-stroke;
 }
 
-.feeds,
-.page {
-  margin: 0;
-  padding: 6px 16px;
-  color: var(--muted);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 32px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
 }
 
-.feeds:empty,
-.page:empty {
+.stats:empty {
   display: none;
 }
 
-.feeds .failing,
-.page.behind {
+.set {
+  min-width: 0;
+}
+
+.figures {
+  display: flex;
+  gap: 18px;
+}
+
+.set h3 {
+  max-width: 30ch;
+  margin: 0 0 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat b {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.stat small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.stat.bad b {
   color: var(--warn);
 }
 

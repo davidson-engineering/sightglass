@@ -26,8 +26,7 @@ const MARKUP = `
              autocomplete="off" spellcheck="false">
       <button type="button" class="close">Close</button>
     </header>
-    <p class="feeds"></p>
-    <p class="page"></p>
+    <div class="stats"></div>
     <div class="scroll">
       <table>
         <colgroup><col class="name"><col class="value"><col><col class="age"></colgroup>
@@ -95,8 +94,7 @@ async function build() {
     body: root.querySelector("tbody"),
     count: root.querySelector(".count"),
     status: root.querySelector(".status"),
-    feeds: root.querySelector(".feeds"),
-    page: root.querySelector(".page"),
+    stats: root.querySelector(".stats"),
     filter: root.querySelector("input"),
     empty: root.querySelector(".empty"),
   };
@@ -362,21 +360,54 @@ function showAges() {
   showPage();
 }
 
+// The figures above the table are groups of labelled numbers: a polling
+// source's, then the page's. A number that shows trouble is marked bad.
+let feedGroups = [];
+let pageGroups = [];
+
+function group(title, stats, hint = "") {
+  const box = document.createElement("div");
+  box.className = "set";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  heading.title = hint || title;
+  const row = document.createElement("div");
+  row.className = "figures";
+  box.append(heading, row);
+  for (const [key, value, label, bad] of stats) {
+    const stat = document.createElement("span");
+    stat.className = bad ? "stat bad" : "stat";
+    stat.dataset.stat = key;
+    const number = document.createElement("b");
+    number.textContent = value;
+    const caption = document.createElement("small");
+    caption.textContent = label;
+    stat.append(number, caption);
+    row.append(stat);
+  }
+  return box;
+}
+
+function showStats() {
+  parts.stats.replaceChildren(...feedGroups, ...pageGroups);
+}
+
+const ms = (value) => (value === null ? "-" : `${Math.round(value)} ms`);
+
 // Each polling source: how often it polled, and how long a poll took.
 function showFeeds(feeds) {
-  const { feeds: line } = parts;
-  line.replaceChildren(
-    ...feeds.map(({ name, rate, took, slowest, failing }) => {
-      const item = document.createElement("span");
-      item.className = failing ? "failing" : "";
-      const ms = (s) => (s === null ? "-" : `${Math.round(s * 1000)} ms`);
-      item.textContent =
-        `${name}: ${rate === null ? "-" : fixed(rate)} polls/s, ` +
-        `last ${ms(took)}, slowest ${ms(slowest)}${failing ? ", failing" : ""}`;
-      return item;
-    }),
+  feedGroups = feeds.map(({ name, rate, took, slowest, failing }) =>
+    group(
+      name.replace(/^https?:\/\//, ""),
+      [
+        ["polls", rate === null ? "-" : fixed(rate), "polls/s", failing],
+        ["took", ms(took && took * 1000), "last poll", failing],
+        ["slowest", ms(slowest && slowest * 1000), "slowest", false],
+      ],
+      `${name}${failing ? " (failing)" : ""}`,
+    ),
   );
-  line.replaceChildren(...[...line.children].flatMap((el, i) => (i ? [" · ", el] : [el])));
+  showStats();
 }
 
 // Whether the page keeps up, measured while the view is open: the page's
@@ -426,7 +457,9 @@ function unwatchPage() {
   longTasks?.disconnect();
   longTasks = null;
   page = null;
-  parts.page.textContent = "";
+  feedGroups = [];
+  pageGroups = [];
+  showStats();
 }
 
 function onMessage({ detail }) {
@@ -444,25 +477,42 @@ function onPlot({ detail }) {
   page.plotSlowest = Math.max(page.plotSlowest, detail.took);
 }
 
-const ms = (value) => `${Math.round(value)} ms`;
-
 function showPage() {
   if (!page) return;
   const was = page;
   page = { ...fresh(), merged: was.merged, merges: was.merges, seen: true };
-  const behind = was.waited > 100 || was.gap > 100;
-  const bits = [`${was.frames} frames a second, longest ${ms(was.gap)}`];
+  const slow = 100; // ms: a frame or a wait this long is noticeable
+  pageGroups = [
+    group("Page", [
+      ["frames", String(was.frames), "frames/s", was.frames < 24],
+      ["gap", ms(was.gap), "longest frame", was.gap > slow],
+      ...(longTasks
+        ? [
+            ["blocked", String(was.blocked), "long tasks", was.blocked > 0],
+            ["longest", was.blocked ? ms(was.longest) : "-", "longest task", was.longest > slow],
+          ]
+        : []),
+    ]),
+  ];
   if (was.messages) {
-    bits.push(
-      `values: ${was.messages} messages, waited up to ${ms(was.waited)}, ` +
-        `applied in up to ${ms(was.handled)}, ${was.merges} merged since opening`,
+    pageGroups.push(
+      group("Values", [
+        ["messages", String(was.messages), "messages/s", false],
+        ["waited", ms(was.waited), "longest wait", was.waited > slow],
+        ["handled", ms(was.handled), "longest apply", was.handled > slow],
+        ["merged", String(was.merges), "merged since open", false],
+      ]),
     );
   }
-  if (was.plots) bits.push(`plots: ${was.plots} requests, slowest ${ms(was.plotSlowest)}`);
-  if (longTasks) bits.push(was.blocked ? `${was.blocked} long tasks, longest ${ms(was.longest)}` : "no long tasks");
-  const line = parts.page;
-  line.className = behind ? "page behind" : "page";
-  line.textContent = `Page: ${bits.join(" · ")}`;
+  if (was.plots) {
+    pageGroups.push(
+      group("Plots", [
+        ["requests", String(was.plots), "requests/s", false],
+        ["slowest", ms(was.plotSlowest), "slowest", was.plotSlowest > 250],
+      ]),
+    );
+  }
+  showStats();
 }
 
 function ago(arrived) {

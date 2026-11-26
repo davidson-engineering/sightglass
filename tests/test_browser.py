@@ -334,10 +334,14 @@ async def test_signals_view_shows_how_fast_the_sources_poll(page, serve):
     monitor = Monitor()
     await page.goto(serve(None, monitor, sources=[Ticking()]))
     await page.locator("[data-signals-open]").click()
-    feeds = page.locator("sightglass-signals .feeds")
-    await expect(feeds).to_have_text(
-        re.compile(r"http://plant/api: [45]\.\d\d polls/s, last 2\d\d ms"),
-        timeout=15_000,
+    stats = page.locator("sightglass-signals .stats")
+    await expect(stats.locator("h3", has_text="plant/api")).to_be_visible(
+        timeout=15_000
+    )
+    polls = stats.locator("[data-stat=polls] b")
+    await expect(polls).to_have_text(re.compile(r"^[45]\.\d\d$"), timeout=15_000)
+    await expect(stats.locator("[data-stat=took] b")).to_have_text(
+        re.compile(r"^2\d\d ms$")
     )
 
 
@@ -345,21 +349,18 @@ async def test_signals_view_shows_whether_the_page_keeps_up(page, serve):
     monitor = Monitor()
     await page.goto(serve(None, monitor, sources=[Ticking()]))
     await page.locator("[data-signals-open]").click()
-    line = page.locator("sightglass-signals .page")
-    await expect(line).to_have_text(
-        re.compile(
-            r"^Page: \d+ frames a second, longest \d+ ms"
-            r" · values: [3-6] messages, waited up to \d+ ms,"
-            r" applied in up to \d+ ms, 0 merged since opening"
-        ),
-        timeout=15_000,
-    )
-    await expect(line).not_to_have_class(re.compile("behind"))
+    stats = page.locator("sightglass-signals .stats")
+    number = lambda key: stats.locator(f"[data-stat={key}] b")  # noqa: E731
+    await expect(number("frames")).to_have_text(re.compile(r"^\d+$"), timeout=15_000)
+    await expect(number("messages")).to_have_text(re.compile(r"^[3-6]$"))
+    await expect(number("merged")).to_have_text("0")
+    await expect(number("waited")).to_have_text(re.compile(r"^\d+ ms$"))
+    await expect(stats.locator("[data-stat=waited].bad")).to_have_count(0)
     # a page that is blocked is behind, and says so
     await page.evaluate(
         "() => { const end = Date.now() + 1500; while (Date.now() < end); }"
     )
-    await expect(line).to_have_class(re.compile("behind"), timeout=5_000)
+    await expect(stats.locator("[data-stat=gap].bad")).to_have_count(1, timeout=5_000)
 
 
 async def test_signals_view_shows_how_quickly_plots_get_their_points(page, serve):
@@ -368,8 +369,11 @@ async def test_signals_view_shows_how_quickly_plots_get_their_points(page, serve
     body = '<div data-plot="a" style="height: 100px"></div>'
     await page.goto(serve(body, monitor))
     await page.locator("body").press("`")
-    line = page.locator("sightglass-signals .page")
-    await expect(line).to_contain_text("plots: ", timeout=10_000)
+    stats = page.locator("sightglass-signals .stats")
+    await expect(stats.locator("[data-stat=requests] b")).to_have_text(
+        re.compile(r"^\d+$"), timeout=10_000
+    )
+    await expect(stats.locator("[data-stat=slowest]")).to_be_visible()
 
 
 async def test_signals_view_charts_are_one_line_forward_in_time(page, serve):
