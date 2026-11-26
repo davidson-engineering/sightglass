@@ -205,6 +205,8 @@ alone with [rest_grid/fake_api.py](rest_grid/fake_api.py). The page is plain
 HTML, so edit the array names in it to match your own API.
 [rest_grid/](rest_grid/)
 
+![The sensor grid wall display: five cards, North, South, East, West and Roof, each plotting its sensors over the last 5 minutes and, larger, the last minute](../docs/rest-grid.webp)
+
 ```bash
 git clone https://github.com/davidson-engineering/sightglass
 cd sightglass
