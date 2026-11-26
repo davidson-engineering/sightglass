@@ -11,7 +11,7 @@ from aiohttp.test_utils import TestServer
 
 from sightglass import Endpoint, Monitor, RestSource
 from sightglass.cli import build, parser
-from sightglass.sources.rest import extract
+from sightglass.sources.rest import _flatten, extract
 
 from .conftest import until
 
@@ -278,3 +278,69 @@ async def test_example_fake_api_feeds_the_example_dashboard(consume, monkeypatch
         assert f"grid.North.value.{rows - 1}.{cols - 1}" not in monitor  # null
     finally:
         await server.close()
+
+
+def reference_flatten(node, path, key, out):
+    """What _flatten did before it was made fast: the specification."""
+    from collections.abc import Mapping
+
+    if isinstance(node, Mapping):
+        children = ((str(name), value) for name, value in node.items())
+    elif isinstance(node, list):
+        children = []
+        for index, item in enumerate(node):
+            name = item.get(key) if isinstance(item, Mapping) else None
+            name = (
+                str(name) if isinstance(name, str | int) and name != "" else str(index)
+            )
+            children.append((name, item))
+    else:
+        if path and (node is None or isinstance(node, str | int | float | bool)):
+            out[path] = node
+        return
+    for name, value in children:
+        reference_flatten(value, f"{path}.{name}" if path else name, key, out)
+
+
+def test_flatten_gives_what_it_always_did_on_any_document():
+    import random
+
+    rng = random.Random(7)
+
+    def document(depth=0):
+        kind = rng.random()
+        if depth > 4 or kind < 0.3:
+            return rng.choice([None, True, False, 0, 3, -2.5, "", "text", 1e300])
+        if kind < 0.65:
+            return {
+                rng.choice(["id", "a", "b", "x.y", "7", ""]) + str(i): document(
+                    depth + 1
+                )
+                for i in range(rng.randint(0, 4))
+            } | (
+                {"id": rng.choice(["n", 3, "", None, True, 1.5])}
+                if rng.random() < 0.4
+                else {}
+            )
+        if (
+            depth == 0 and rng.random() < 0.3
+        ):  # one long list, past the cached positions
+            return [rng.choice([1, None, "x", {"id": "n"}]) for _ in range(300)]
+        return [document(depth + 1) for _ in range(rng.choice([0, 1, 3]))]
+
+    for _ in range(300):
+        doc = document()
+        ours, expected = {}, {}
+        _flatten(doc, "p", "id", ours)
+        reference_flatten(doc, "p", "id", expected)
+        assert ours == expected and list(ours) == list(
+            expected
+        )  # and in the same order
+
+
+def test_flatten_copes_with_numbered_keys_and_long_lists():
+    out = {}
+    _flatten({1: "a", "k": [10] * 300}, "", "id", out)
+    assert (
+        out["1"] == "a" and out["k.0"] == 10 and out["k.299"] == 10 and len(out) == 301
+    )
