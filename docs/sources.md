@@ -94,8 +94,13 @@ Corrupt frames are skipped and decoding resumes at the next `0xAA`.
 `RestSource` needs the `rest` extra (`aiohttp`). It polls each URL with GET:
 
 - **Ids:** nested objects become dotted ids, and lists of objects are keyed by
-  their `id` field. `Endpoint(url, prefix=, select=, key=, interval=,
-  accept=)` tunes one URL; `headers={...}` sends an API key or bearer token.
+  their `id` field (which is not an id itself: `sensors.s0.rate`, no
+  `sensors.s0.id`). `Endpoint(url, prefix=, select=, key=, include=,
+  exclude=, interval=, accept=)` tunes one URL; `headers={...}` sends an API key or bearer token.
+- **Choosing ids:** `include` and `exclude` are lists of id patterns (`*` for
+  any characters, matched against the whole id, prefix included); an id is kept
+  if it matches an `include` (or there is none) and no `exclude`. Dropped
+  fields never reach the page or `max_elements`.
 - **Invalid data is blanked:** `null`, or an endpoint that can't be reached,
   blanks that id (a gap in a plot) rather than leaving its last value showing.
 - **A down endpoint** is logged once and retried.
