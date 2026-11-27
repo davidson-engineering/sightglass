@@ -1,0 +1,45 @@
+# Dependabot opens pull requests that keep dependencies current; CI checks
+# each one like any other pull request. Weekly, and grouped, so it is one or
+# two pull requests a week rather than one per package.
+version: 2
+updates:
+  # Python packages in uv.lock: what the tests and the examples run with.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    # sightglass is a library: its lower bounds in pyproject.toml say what it
+    # needs, not the newest release, so only the lock file moves.
+    versioning-strategy: lockfile-only
+    # Leave a new release a week before taking it, so a broken or hijacked
+    # one is usually caught and yanked first.
+    cooldown:
+      default-days: 7
+    groups:
+      python:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+
+  # Actions the workflows use (actions/checkout, astral-sh/setup-uv, ...).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+
+  # The Python base image of examples/docker.
+  - package-ecosystem: docker
+    directory: /examples/docker
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
