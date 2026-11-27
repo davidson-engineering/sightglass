@@ -12,7 +12,9 @@ Each part of sightglass is a small interface you can implement yourself:
   yields lists of `{id: value}` mappings. A source that can also write to its
   device adds `claims(id)` (true for its ids) and `async def write(update)`,
   raising `WriteError`; values sent to its ids then go to `write()` (see
-  `Source` in `monitor.py`).
+  `Source` in `monitor.py`). A list of elements in its `elements` attribute
+  says how its ids look: the monitor adds each one whose id the program
+  hasn't declared when it starts reading the source (`ProcessSource` does).
 - **Output:** any object with `async def run(monitor)`, and optionally
   `async def start(monitor)` for setup that can fail and
   `async def flush(monitor)` to deliver the last values before

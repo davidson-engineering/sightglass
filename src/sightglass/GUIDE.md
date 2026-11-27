@@ -56,6 +56,9 @@ monitor.set("status", "done")
 ```
 
 - `set()` never blocks and is safe from any thread.
+- `start(sources=[ProcessSource()])` also shows the program's own CPU, memory
+  (MB), threads, open files and uptime, as `process.*` ids, once a second; no
+  other code, psutil optional.
 - `start()` raises `OSError` if the port is taken; pass
   `outputs=[WebDashboard(port=0)]` for any free port (the address is printed,
   and is `web.url` on the `WebDashboard` object).
