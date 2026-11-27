@@ -529,6 +529,35 @@ ranges = [30, 10]
     )
 
 
+async def test_a_plot_only_page_can_opt_out_of_live_values(page, serve):
+    """data-values="off" on the script tag: the plots still draw, from /history,
+    but the page opens no websocket for values it never shows."""
+    monitor = Monitor(history=30)
+    monitor.update({"a": 1.5})
+    sockets = []
+    page.on("websocket", lambda ws: sockets.append(ws.url))
+    plot = '<div id="p" data-plot="a" style="width: 300px; height: 100px"></div>'
+
+    def html(attribute):
+        return (
+            f"<!doctype html><body>{plot}"
+            f'<script src="/_sightglass/sightglass.js"{attribute}></script></body>'
+        )
+
+    await page.goto(serve(None, monitor, html=html("")))
+    await expect(page.locator("#p")).to_have_attribute("data-plot-signals", "1")
+    assert len(sockets) == 1 and sockets[0].endswith("/ws")  # the usual page
+
+    sockets.clear()
+    quiet = Monitor(history=30)
+    quiet.update({"a": 1.5})
+    await page.goto(serve(None, quiet, html=html(' data-values="off"')))
+    await expect(page.locator("#p")).to_have_attribute("data-plot-signals", "1")
+    await page.wait_for_timeout(300)
+    assert sockets == []
+    assert await page.evaluate("document.documentElement.dataset.connection") == "off"
+
+
 # Records the text each plot draws, by the id of its element, in window.labels.
 RECORD_LABELS = """
 window.labels = {};

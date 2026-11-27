@@ -184,20 +184,48 @@ def extract(document: Any, endpoint: Endpoint) -> Update:
     return values
 
 
+_LEAVES = frozenset({str, int, float, bool})  # what a JSON document is made of
+_SCALARS = (str, int, float, bool)
+_INDEX = tuple(map(str, range(256)))  # a list's positions as text, made once
+
+
 def _flatten(node: Any, path: str, key: str, out: dict[str, Any]) -> None:
-    """Add the scalars under ``node`` to ``out``; ids are ``path`` plus names."""
-    if isinstance(node, Mapping):
-        children = ((str(name), value) for name, value in node.items())
+    """Add the scalars under ``node`` to ``out``; ids are ``path`` plus names.
+
+    Run on the event loop for every poll, so a document's own types (dict, list,
+    str, int, float, bool) take the short way, and a leaf is never a call."""
+    cls = type(node)
+    if cls is dict:
+        named = node.items()
+    elif cls is list:
+        named = zip(_names(node, key), node, strict=True)
+    elif isinstance(node, Mapping):
+        named = ((str(name), value) for name, value in node.items())
     elif isinstance(node, list):
-        children = (
-            (_item_name(item, key, index), item) for index, item in enumerate(node)
-        )
+        named = zip(_names(node, key), node, strict=True)
     else:
-        if path and (node is None or isinstance(node, str | int | float | bool)):
+        if path and (node is None or isinstance(node, _SCALARS)):
             out[path] = node
         return
-    for name, value in children:
-        _flatten(value, f"{path}.{name}" if path else name, key, out)
+    prefix = f"{path}." if path else ""
+    for name, value in named:
+        if type(name) is not str:
+            name = str(name)
+        cls = type(value)
+        if cls in _LEAVES or value is None:
+            out[prefix + name] = value
+        else:
+            _flatten(value, prefix + name, key, out)
+
+
+def _names(items: list[Any], key: str) -> list[str]:
+    """The id part for each item of a list: its ``key`` field, or its position."""
+    return [
+        _item_name(item, key, index)
+        if isinstance(item, Mapping)
+        else (_INDEX[index] if index < 256 else str(index))
+        for index, item in enumerate(items)
+    ]
 
 
 def _item_name(item: Any, key: str, index: int) -> str:
