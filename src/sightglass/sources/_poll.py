@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -99,7 +100,9 @@ async def poll(
     showing: set[str] = set()  # the ids with a valid value on display
     due = loop.time()
     while True:
-        began = loop.time()
+        # perf_counter, not the loop's clock: on Windows before Python 3.13
+        # that ticks every 15.6 ms, so a fast poll would have taken 0 s.
+        began = time.perf_counter()
         try:
             reply = await fetch()
             reason = None
@@ -108,7 +111,8 @@ async def poll(
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
         if feed is not None:
-            feed.record(loop.time(), loop.time() - began, reason is not None)
+            took = time.perf_counter() - began
+            feed.record(loop.time(), took, reason is not None)
         if reason is not None:
             reply = {}
             if reason != logged:  # a new cause is worth a line too

@@ -13,6 +13,8 @@ import aiohttp
 import pytest
 
 from sightglass import (
+    BinaryFrameDecoder,
+    CsvDecoder,
     SerialSource,
     StdinSource,
     TerminalDisplay,
@@ -20,6 +22,7 @@ from sightglass import (
     ZmqSource,
 )
 from sightglass.cli import build, parser
+from sightglass.monitor import MAX_ELEMENTS
 
 from .conftest import run_cli, stop
 
@@ -41,7 +44,7 @@ def test_build_serial_csv(monkeypatch):
         args("--serial", "auto", "--csv", "a, b", "--port", "9")
     )
     (serial,) = sources
-    assert isinstance(serial, SerialSource) and serial.decoder.keys == ["a", "b"]
+    assert isinstance(serial, SerialSource) and serial.decoder.fields == ["a", "b"]
     (web,) = outputs
     assert isinstance(web, WebDashboard) and web.port == 9
 
@@ -53,6 +56,15 @@ def test_build_zmq_pull_and_terminal(monkeypatch):
     assert isinstance(zmq_source, ZmqSource)
     assert (zmq_source.pattern, zmq_source.bind) == ("pull", True)
     assert isinstance(outputs[0], TerminalDisplay)
+
+
+def test_zmq_messages_take_the_same_decoders_as_serial(monkeypatch):
+    monkeypatch.setattr("sys.stdin", Terminal())
+    _, (zmq_source,), _ = build(args("--zmq", "tcp://x:1", "--csv", "a,b"))
+    assert isinstance(zmq_source.decoder, CsvDecoder)
+    assert zmq_source.decoder.fields == ["a", "b"]
+    _, (zmq_source,), _ = build(args("--zmq", "tcp://x:1", "--binary", "1=X"))
+    assert isinstance(zmq_source.decoder, BinaryFrameDecoder)
 
 
 def test_theme_option_reaches_both_kinds_of_page(monkeypatch):
@@ -70,11 +82,11 @@ def test_theme_option_reaches_both_kinds_of_page(monkeypatch):
 
 def test_max_elements_lets_a_big_plc_show_every_variable(monkeypatch):
     monkeypatch.setattr("sys.stdin", Terminal())
-    monitor, _, _ = build(args("--max-elements", "2000", "--history", "60"))
-    assert monitor.max_elements == 2000
-    monitor.update({f"GVL.f{i}": i for i in range(1500)})
-    assert len(monitor.signals) == 1500
-    assert build(args())[0].max_elements == 500  # the default
+    monitor, _, _ = build(args("--max-elements", "5000", "--history", "60"))
+    assert monitor.max_elements == 5000
+    monitor.update({f"GVL.f{i}": i for i in range(3000)})
+    assert len(monitor.signals) == 3000
+    assert build(args())[0].max_elements == MAX_ELEMENTS  # the default
 
 
 def test_ads_names_split_on_commas_outside_array_indexes():
@@ -92,8 +104,11 @@ def test_build_reads_piped_stdin(monkeypatch):
 @pytest.mark.parametrize(
     ("argv", "message"),
     [
-        (["--csv", "a,b"], "--csv, --json and --binary describe a --serial device"),
-        (["--zmq", "tcp://x:1", "--binary", "1=X"], "--serial device"),
+        (["--csv", "a,b"], "--csv, --json and --binary describe a --serial or --zmq"),
+        (
+            ["--serial", "auto", "--zmq", "tcp://x:1", "--json"],
+            "--json describes one device; with --serial and --zmq use --config",
+        ),
         (["--pull"], "--pull goes with --zmq"),
         (["--serial", "auto", "--binary", "X=1"], "BYTE=NAME"),
         (["--demo", "launch", "--title", "X"], "its own page and data; drop --title"),

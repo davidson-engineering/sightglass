@@ -295,7 +295,7 @@ async def test_simulated_source_keeps_its_rate_when_generating_takes_time(tick):
         waits.append(seconds)
         await real_sleep(seconds)
 
-    source = SimulatedSource(slow, rate=100)
+    source = SimulatedSource(slow, interval=0.01)
     try:
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("sightglass.sources.simulated.asyncio.sleep", sleep)

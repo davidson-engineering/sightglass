@@ -68,4 +68,6 @@ def run(
         theme=theme,
         open_browser=open_browser,
     )
-    build_monitor().serve(sources=[SimulatedSource(Waves(), rate=RATE)], outputs=[web])
+    build_monitor().serve(
+        sources=[SimulatedSource(Waves(), interval=1 / RATE)], outputs=[web]
+    )

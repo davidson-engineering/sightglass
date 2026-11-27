@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from ..elements import Element
-from ..monitor import Source
+from ..monitor import MAX_ELEMENTS, THEMES, TITLE, Source
 from . import sources
 from ._config import number, only, tables
 from .page import render
@@ -54,7 +54,8 @@ TOP_KEYS = {
     "max_elements",
     "panel_width",
     "title_bar",
-    "debug",
+    "theme",
+    "stale_after",
     "source",
     "section",
     "panel",
@@ -83,7 +84,8 @@ class Dashboard:
     sections: list[Section] = field(default_factory=list)
     version: str = ""  # the dashboard's own, from the file
     title_bar: str = "top"  # where the title bar goes: "top" or "bottom"
-    debug: bool = False  # figures on whether sources and page keep up
+    theme: str = THEMES[0]  # the page's look unless a viewer switches
+    stale_after: float | None = None  # seconds without data before values dim
     config: str = ""  # the file's name
     digest: str = ""  # a short fingerprint of the file's text: it changes when it does
     started: str = ""  # when this instance was loaded
@@ -120,8 +122,12 @@ def load(path: str | Path) -> Dashboard:
     default: the longest range and a minute), ``max_elements`` (default 2000),
     ``panel_width`` (least pixels wide a panel is; default 520), ``title_bar``
     (``"top"``, the default, or ``"bottom"``: where the title and what
-    identifies this instance go), ``debug`` (``true`` to show, in the signals
-    view, whether the sources and the page keep up; default ``false``).
+    identifies this instance go), ``theme`` (``"classic"``, the default, or
+    ``"terminal"``: the look unless a viewer switches), ``stale_after``
+    (seconds without new data before values dim; default: never).
+
+    The file says what the dashboard is; the command line says where and how
+    it runs (``--host``, ``--port``, ``--token``, ``--open``, ``--debug``).
 
     ``[[source]]``, of a ``type``: ``rest`` (``url`` (required), ``prefix``,
     ``select``, ``key``, ``interval``, ``timeout``, ``accept`` and ``headers``;
@@ -180,9 +186,9 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
         raise ValueError(
             f"history is {history:.15g} s but a panel plots {longest:.15g} s"
         )
-    max_elements = int(number(data, "max_elements", 2000, "the config"))
+    max_elements = int(number(data, "max_elements", MAX_ELEMENTS, "the config"))
     panel_width = int(number(data, "panel_width", 520, "the config"))
-    title = data.get("title", "Dashboard")
+    title = data.get("title", TITLE)
     version = data.get("version", "")
     if (
         not isinstance(title, str)
@@ -195,9 +201,12 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
         raise ValueError(
             f"title_bar must be {' or '.join(TITLE_BARS)}, not {title_bar!r}"
         )
-    debug = data.get("debug", False)
-    if not isinstance(debug, bool):
-        raise ValueError("debug must be true or false")
+    theme = data.get("theme", THEMES[0])
+    if theme not in THEMES:
+        raise ValueError(f"theme must be {' or '.join(THEMES)}, not {theme!r}")
+    stale_after = (
+        number(data, "stale_after", 1, "the config") if "stale_after" in data else None
+    )
     _one_format_each(panels)
     return Dashboard(
         title,
@@ -208,7 +217,8 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
         found,
         version=str(version),
         title_bar=title_bar,
-        debug=debug,
+        theme=theme,
+        stale_after=stale_after,
     )
 
 

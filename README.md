@@ -91,7 +91,7 @@ curl http://127.0.0.1:8080/values     # what the dashboard shows, as JSON
 
 # Read a device.
 sightglass --serial auto --csv temperature,humidity
-sightglass --zmq tcp://localhost:5556
+sightglass --zmq tcp://localhost:5556 --json      # --csv, --json, --binary: as serial
 sightglass --ads 5.12.34.56.1.1 --vars 'MAIN.*'    # a Beckhoff PLC
 sightglass --rest http://localhost:8000/metrics    # a JSON REST API, polled
 ```
@@ -140,7 +140,7 @@ monitor.start()
 | `TextElement` | a value, optionally scaled and number-formatted | any value |
 | `Sparkline` | a number and a chart of its recent history (`interval=1`: one point a second, for longer spans of fast values) | a number |
 | `ProgressBar` | a filling bar from 0 to `total` | a number |
-| `RangeBar` | a marker on a min to max track | a number |
+| `RangeBar` | a marker on a track from `min` to `max` | a number |
 | `IndicatorLamp` | on/off | `True`/`False`, `1`/`0`, `on`/`off` |
 | `MachineState` | named on/off states packed into one integer | an integer (bit 0 = first state) |
 | `Coordinate` | a multi-axis position | a list, or per axis: `"<id>.x"` |
@@ -155,10 +155,12 @@ ids `X.<id>`, so one list can serve several axes.
 `TextFormat(width=10, precision=3, force_sign=True, padding="0")` turns `27.31`
 into `+00027.310`. `Style(fg, bg, bold, dim)` adds colour in the terminal:
 a colour name, or one of xterm's 256 colour numbers (`Style(fg=214)` is amber).
+Every element that shows a number takes `format=TextFormat(...)`; lamps and
+machine states take `on_style=` and `off_style=`.
 
 For a fixed, curated dashboard use `Monitor(strict=True)`: unknown ids are
 then rejected and logged (once per id) instead of creating elements.
-`max_elements` (default 500; `--max-elements` on the command line) stops a
+`max_elements` (default 2000; `--max-elements` on the command line) stops a
 noisy link creating elements without end. Values for ids past it are dropped
 and logged, so raise it for a PLC with more variables than that.
 
@@ -181,21 +183,21 @@ from sightglass import CsvDecoder, Monitor, SerialSource
 monitor = Monitor()
 # The device prints one line per sample: "21.5,48,OK"
 device = SerialSource(
-    "auto", 115200, decoder=CsvDecoder(["temperature", "humidity", "status"])
+    "auto", baudrate=115200, decoder=CsvDecoder(["temperature", "humidity", "status"])
 )
 monitor.serve(sources=[device])
 ```
 
 | Source | Reads |
 | --- | --- |
-| `SerialSource(port, baudrate, decoder=...)` | a serial port (`"auto"` picks the first USB device); waits for it and reconnects |
+| `SerialSource(port, baudrate=115200, decoder=...)` | a serial port (`"auto"` picks the first USB device); waits for it and reconnects |
 | `ZmqSource(endpoint, pattern="sub")` | ZeroMQ PUB/SUB (a publisher that binds `endpoint`) |
 | `ZmqSource(endpoint, pattern="pull")` | ZeroMQ PUSH/PULL: binds `endpoint`; unlike PUB/SUB, nothing sent before the monitor starts is lost |
 | `AdsSource(target, variables)` | a Beckhoff TwinCAT PLC over ADS ([below](#beckhoff-twincat-plcs-ads)); can also write to it |
 | `RestSource(*urls, interval=1)` | JSON REST endpoints, polled with GET (needs `aiohttp`, the `rest` extra); nested objects become dotted ids, lists of objects are keyed by their `id` field; `null` is invalid data, so that id is blanked (a gap in a plot) rather than left showing its last value, as is every id of an endpoint that can't be reached; `Endpoint(url, prefix=, select=, key=, interval=, accept=)` tunes one; `headers={...}` for an API key or bearer token; a down endpoint is logged once and retried; a reply over 16 MB is refused (64 MB for InfluxDB) and one over 256 KB is parsed in a worker thread, so a big one doesn't hold up the page |
 | `InfluxSource(url, org=, token=, bucket=)` | an InfluxDB 2.x bucket, polled with Flux (needs the `influxdb` extra, which is `aiohttp`): the newest point of each series, with ids from `id_from`; a series with no point in `window` seconds, or an unreachable server, is blanked, as with `null` in `RestSource`. Use it from a [config file](#dashboards-from-a-config-file) or in Python |
 | `StdinSource()` | piped standard input, as `sightglass` does |
-| `SimulatedSource(fn, rate)` | `fn(seconds)` called `rate` times a second, for demos and tests |
+| `SimulatedSource(fn, interval=0.05)` | `fn(seconds)` called every `interval` seconds, for demos and tests |
 
 | Decoder | Wire format |
 | --- | --- |
@@ -412,9 +414,13 @@ page, so keep those dashboards to sources with a few hundred ids.
 
 | Key | Meaning |
 | --- | --- |
-| `title`, `version`, `history`, `max_elements`, `panel_width`, `title_bar`, `debug` | the page heading; a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time; seconds of values kept for plots (default: the longest range and a minute); the most ids shown (default 2000); the least width of a panel; where the title bar goes, `"top"` (the default) or `"bottom"`; `true` to show whether the sources and the page keep up in the signals view (`` ` ``, default `false`) |
+| `title`, `version`, `history`, `max_elements`, `panel_width`, `title_bar`, `theme`, `stale_after` | the page heading (default `"Dashboard"`); a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time; seconds of values kept for plots (default: the longest range and a minute, unlike `--history`, which is off unless given, because trend panels need it); the most ids shown (default 2000); the least width of a panel; where the title bar goes, `"top"` (the default) or `"bottom"`; the look unless a viewer switches, `"classic"` (the default) or `"terminal"`; seconds without new data before values dim (default: never) |
 | `[[source]]` | one per source, of a `type`: `rest`, `ads`, `zmq`, `serial` or `influxdb`; their keys are below |
 | `[[section]]`, `[[panel]]` | as above |
+
+The file says what the dashboard is; the command line says where and how it
+runs. With `--config`, only `--host`, `--port`, `--token`, `--open`, `--debug`
+and `-v` are taken, and any other option is refused with a message naming it.
 
 Sources, and the keys each takes (any number, of any mix; every id they make
 can be shown by a panel):
@@ -422,13 +428,17 @@ can be shown by a panel):
 | `type` | Keys |
 | --- | --- |
 | `rest` | `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see `Endpoint` and `RestSource` above |
-| `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC |
+| `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC: `write = true` on a variable is refused here (an interface file's marks are left unused) |
 | `zmq` | `endpoint`, `pattern` (`"sub"` or `"pull"`), `bind`, and a `decoder` |
 | `serial` | `port` (default `"auto"`), `baudrate`, and a `decoder` |
 | `influxdb` | InfluxDB 2.x: `url`, `org`, `token`, and a `bucket` (narrowed by `measurement`, `fields`, `tags`) or a Flux `query`; `window`, `id_from`, `prefix`, `interval`, `timeout`: see below |
 
 A `zmq` or `serial` source's `decoder` is `"keyvalue"` (the default), `"json"`,
-`"csv"` with `fields = ["a", "b"]`, or `"binary"` with `bytes = { "1" = "X" }`.
+`"csv"` with `fields = ["a", "b"]`, or `"binary"` with `names = { "1" = "X" }`.
+
+`timeout` defaults to what each protocol needs: 2 s for a PLC (it answers in
+milliseconds, so longer means the link is down), 5 s for a REST API (a web
+service can be slow), 10 s for InfluxDB (a query over many series takes time).
 
 An `influxdb` source runs its query every `interval` seconds and shows the
 newest point of each series, with the id made by joining the columns named in
@@ -504,7 +514,7 @@ yours) has a view for checking what a feed sends: press `` ` `` (or click
 **Signals** on the generic page, or an element of yours marked
 `data-signals-open`). It lists every id the dashboard has accepted, its latest
 value as sent (before an element scales or formats it), how long ago it
-arrived, and a chart of its last minute. With `debug` on (`debug = true` in a config file, `--debug`, or
+arrived, and a chart of its last minute. With `debug` on (`--debug`, or
 `WebDashboard(debug=True)`; off by default, since measuring costs the page a
 little) the view also shows labelled figures for whether things keep up, over
 the last second and only while it is open. With REST or InfluxDB sources,

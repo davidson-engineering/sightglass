@@ -25,7 +25,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | The program can print lines | print `key=value` pairs; run `program \| sightglass` |
 | A separate Python process should report to a shared dashboard | `Client().set(id, value)` (standard library only) |
 | A microcontroller on a serial port | `sightglass --serial auto --csv a,b,c` (or `--json`, `--binary`) |
-| A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost) |
+| A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost; `--json`, `--csv`, `--binary` as for serial) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | A REST API that answers GET with JSON | `sightglass --rest http://host:8000/metrics` (repeat `--rest`; `--rest-interval`, `--rest-header 'X-Api-Key: ...'`), or `RestSource("http://host/metrics", interval=2)`; needs `[rest]` |
 | A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; see the README |
@@ -83,9 +83,7 @@ monitor.add(
     Sparkline("rate", label="Items/s", format=TextFormat(precision=1)),
     IndicatorLamp("healthy", label="Healthy"),
 )
-monitor.add_group(
-    "X", [RangeBar("velocity", min_value=-10, max_value=10, units="mm/s")]
-)
+monitor.add_group("X", [RangeBar("velocity", min=-10, max=10, units="mm/s")])
 monitor.start(outputs=[WebDashboard(title="Batch job")])
 monitor.set("healthy", True)
 monitor.set("X.velocity", 2.5)
@@ -161,7 +159,9 @@ reconnects after it is unplugged. In Python:
 from sightglass import CsvDecoder, Monitor, SerialSource
 
 monitor = Monitor()
-device = SerialSource("auto", 115200, decoder=CsvDecoder(["temperature", "humidity"]))
+device = SerialSource(
+    "auto", baudrate=115200, decoder=CsvDecoder(["temperature", "humidity"])
+)
 monitor.serve(sources=[device])  # runs until Ctrl+C
 ```
 
@@ -209,8 +209,8 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 - **Windows:** needs TwinCAT's ADS router installed (XAE, XAR or TC1000).
 - **No PLC to hand:** `sightglass --demo load` reads a fake one over real
   ADS (`sightglass.fake_plc`, on 127.0.0.1:48898, target `127.0.0.1.1.1`).
-- **More than 500 variables:** add `--max-elements 2000` (or
-  `Monitor(max_elements=2000)`); past the limit, values are dropped.
+- **More than 2000 variables:** add `--max-elements 5000` (or
+  `Monitor(max_elements=5000)`); past the limit, values are dropped.
 - Warnings name every variable that couldn't be read and why (unknown name,
   undeclared struct type, size mismatch with the declaration); read them.
 
@@ -228,7 +228,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 - Floats that need more than 6 significant digits are shortened; use
   `TextFormat(precision=2)` for a fixed number of decimals.
 - `Monitor(strict=True)` rejects ids that weren't declared (logged once per
-  id); by default at most `max_elements=500` are created (`--max-elements`
+  id); by default at most `max_elements=2000` are created (`--max-elements`
   on the command line). Ids past that are dropped, with a warning.
 
 | To show | Element | Update with |
@@ -237,7 +237,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | a small line of recent values | `Sparkline(id, points=60, scale=1 / 1024, units="KB/s")` | numbers |
 | a longer line of a fast value | `Sparkline(id, points=300, interval=1)`: one point a second | numbers |
 | progress | `ProgressBar(id, total=100)` | a number |
-| a reading within limits | `RangeBar(id, min_value=0, max_value=100, units="mm")` | a number |
+| a reading within limits | `RangeBar(id, min=0, max=100, units="mm")` | a number |
 | on/off | `IndicatorLamp(id)` | bool, 1/0, on/off |
 | many flags in one integer | `MachineState(id, states=[...])` (bit 0 first) | an integer |
 | a position | `Coordinate(id, axes=("x", "y", "z"))` | a list, or `id.x` |
@@ -357,5 +357,5 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
 - In asyncio code use `await monitor.run(...)`; `start()` runs its own loop in
   a thread and `serve()` blocks.
 - In tests: `WebDashboard(port=0, announce=False)`, `monitor.start(...)`,
-  `web.url`, then `monitor.stop()`. `SimulatedSource(fn, rate)` generates
+  `web.url`, then `monitor.stop()`. `SimulatedSource(fn, interval=0.05)` generates
   data without hardware.

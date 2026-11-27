@@ -3,6 +3,7 @@ a reply over the limit is refused, and nothing a reply does stops the polling.""
 
 import asyncio
 import logging
+import time
 
 import pytest
 from aiohttp import web
@@ -122,10 +123,11 @@ async def test_a_poll_that_fails_unexpectedly_is_a_failed_poll(
 async def test_a_failure_is_logged_once_and_again_when_its_cause_changes(caplog):
     from sightglass.sources._poll import Failed, poll
 
-    causes = iter(["HTTP 502", "HTTP 502", "refused", "refused", "refused", None])
+    causes = iter(["HTTP 502", "HTTP 502", "refused", "refused", "refused"])
 
     async def fetch():
-        cause = next(causes)
+        # Then answering, however many more polls run before the test stops it.
+        cause = next(causes, None)
         if cause:
             raise Failed(cause)
         return {}
@@ -207,3 +209,26 @@ async def test_a_running_source_shows_how_fast_it_is_polled(server, consume):
     assert feed["name"].endswith("/small") and not feed["failing"]
     assert 7 < feed["rate"] < 11  # asked for 10 a second
     assert 0 < feed["took"] < 0.1
+
+
+async def test_a_poll_is_timed_finely_where_the_loops_clock_is_coarse(monkeypatch):
+    """On Windows before Python 3.13 the event loop's clock ticks every 15.6 ms,
+    so a fast poll timed with it took 0 s."""
+    from sightglass.sources._poll import poll
+
+    loop = asyncio.get_running_loop()
+    real = loop.time
+    monkeypatch.setattr(loop, "time", lambda: real() // 0.0156 * 0.0156)
+
+    async def fetch():
+        done = time.perf_counter() + 0.002  # a fast reply: well under one tick
+        while time.perf_counter() < done:
+            pass
+        return {}
+
+    feed = Feed("svc")
+    task = asyncio.create_task(poll(fetch, 0.05, asyncio.Queue(), "svc", feed))
+    await until(lambda: len(feed._polls) >= 3)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert all(took >= 0.002 for _, took in feed._polls)

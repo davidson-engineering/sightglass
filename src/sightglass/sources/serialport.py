@@ -55,8 +55,8 @@ class SerialSource:
     def __init__(
         self,
         port: str = "auto",
-        baudrate: int = 115200,
         *,
+        baudrate: int = 115200,
         decoder: Decoder,
         reconnect_delay: float | None = 2.0,
         **serial_options: Any,
@@ -110,4 +110,4 @@ class SerialSource:
         )
 
     def __repr__(self) -> str:
-        return f"SerialSource({self.port!r}, {self.baudrate})"
+        return f"SerialSource({self.port!r}, baudrate={self.baudrate})"

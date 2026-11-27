@@ -8,6 +8,12 @@ import pytest
 
 from sightglass import WriteError
 
+# pyads goes through TwinCAT's own ADS router on Windows (TcAdsDll.dll), which
+# CI machines don't have: tests that build an AdsSource or import pyads skip.
+needs_twincat_router = pytest.mark.skipif(
+    sys.platform == "win32", reason="pyads needs TwinCAT's ADS router on Windows"
+)
+
 
 class FakeSerialDevice:
     """A pseudo-terminal pair: the monitor opens ``port``, the test writes to

@@ -98,7 +98,7 @@ class AdsSource:
             first TwinCAT 3 PLC; TwinCAT 2 uses 801).
         variables: what to read, as above.
         types: Structured Text ``TYPE ... END_TYPE`` declarations.
-        ip_address: the PLC's IP address, if it isn't the first four parts of
+        ip: the PLC's IP address, if it isn't the first four parts of
             its AMS net id.
         interval: seconds between reads.
         allow_writes: write values sent to variables marked ``write``.
@@ -111,7 +111,7 @@ class AdsSource:
         variables: plc.VariableSpec,
         *,
         types: str = "",
-        ip_address: str | None = None,
+        ip: str | None = None,
         interval: float = 0.1,
         allow_writes: bool = False,
         reconnect_delay: float | None = 2.0,
@@ -121,7 +121,7 @@ class AdsSource:
             raise ValueError("interval must be positive")
         self.target = target
         self.net_id, self.host, self.port = _parse_target(target)
-        self.ip_address = ip_address
+        self.ip = ip
         self.variables = plc.parse_variables(variables)
         self.types = plc.Types(types)
         self._declared = plc.declared_types(self.variables, self.types)
@@ -252,7 +252,7 @@ class AdsSource:
                 self._pause(stop, self.reconnect_delay)
 
     def _connect(self) -> pyads.Connection:
-        ip = self.ip_address
+        ip = self.ip
         if ip is None:
             ip = socket.gethostbyname(self.host) if self.host else _ip_of(self.net_id)
         if sys.platform != "win32":
@@ -483,7 +483,7 @@ class AdsSource:
         """One line saying what went wrong, and what to check. A PLC that
         never answers usually lacks a route; one that stops answering went
         away."""
-        address = self.ip_address or self.host or _ip_of(self.net_id)
+        address = self.ip or self.host or _ip_of(self.net_id)
         if isinstance(error, pyads.ADSError):
             code = error.err_code
             if code == _PORT_NOT_FOUND:

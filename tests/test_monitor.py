@@ -18,6 +18,7 @@ from sightglass import (
     Table,
     TextElement,
     WriteError,
+    start,
 )
 from sightglass.monitor import WRITES_ENV
 
@@ -259,7 +260,7 @@ async def test_add_from_another_thread_waits_and_reports_errors():
 
 async def test_run_feeds_sources_until_cancelled():
     monitor = make_monitor()
-    source = SimulatedSource(lambda t: {"speed": "tick"}, rate=100)
+    source = SimulatedSource(lambda t: {"speed": "tick"}, interval=0.01)
     version = monitor.version
     task = asyncio.create_task(monitor.run(sources=[source]))
     await asyncio.wait_for(monitor.wait_for_change(version), 1)
@@ -418,3 +419,12 @@ def test_a_missing_optional_dependency_says_what_to_install(monkeypatch):
     monkeypatch.delitem(vars(sightglass), "AdsSource", raising=False)
     with pytest.raises(ImportError, match=r"pip install 'sightglass\[ads\]'"):
         sightglass.AdsSource  # noqa: B018
+
+
+def test_start_takes_every_monitor_option():
+    monitor = start(outputs=[], strict=True, max_elements=7, history=30)
+    try:
+        assert monitor.strict and monitor.max_elements == 7
+        assert monitor.history is not None
+    finally:
+        monitor.stop()
