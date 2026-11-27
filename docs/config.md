@@ -117,6 +117,20 @@ blue wherever they are placed.
 
 With `secondary = false`, the other three secondary settings are an error.
 
+### A panel that shows nothing
+
+Once every source has answered a poll, sightglass warns (once, on stderr) about
+each panel whose id or pattern matches nothing, with the closest id it did
+receive:
+
+```text
+panel "CPU" (section "Host"): no id 'res.cpu_percent'; did you mean 'res.host.cpu_percent'?
+```
+
+It only checks when every `[[source]]` is a polling one (rest, influxdb); a
+source that can deliver an id at any time (zmq, serial, ads, `POST /update`)
+turns the check off.
+
 ### What panels cost
 
 The dashboard keeps history only for the ids its `trend` panels plot. A

@@ -34,10 +34,12 @@ class Feed:
     def __init__(self, name: str) -> None:
         self.name = name
         self.failing = False
+        self.answered = False  # a poll has succeeded
         self._polls: deque[tuple[float, float]] = deque()  # (ended, took)
 
     def record(self, ended: float, took: float, failed: bool) -> None:
         self.failing = failed
+        self.answered = self.answered or not failed
         self._polls.append((ended, took))
         while self._polls and self._polls[0][0] < ended - self.WINDOW:
             self._polls.popleft()
