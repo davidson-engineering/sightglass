@@ -28,7 +28,15 @@ from .decoders import (
     KeyValueDecoder,
 )
 from .history import History
-from .monitor import MAX_ELEMENTS, TITLE, WRITES_ENV, Monitor, Output, Source
+from .monitor import (
+    MAX_ELEMENTS,
+    THEMES,
+    TITLE,
+    WRITES_ENV,
+    Monitor,
+    Output,
+    Source,
+)
 from .sources.stdin import StdinSource
 
 EXAMPLES = """\
@@ -174,8 +182,8 @@ def parser() -> argparse.ArgumentParser:
     display.add_argument("--title", default=TITLE, help="page heading")
     display.add_argument(
         "--theme",
-        choices=["classic", "terminal"],
-        default="classic",
+        choices=THEMES,
+        default=THEMES[0],
         help="the page's look unless a viewer switches (default: classic)",
     )
     display.add_argument(
@@ -314,13 +322,17 @@ def config_build(
         "--demo": args.demo,
         "--terminal": args.terminal,
         "--title": args.title != TITLE,
+        "--theme": args.theme != THEMES[0],
+        "--stale-after": args.stale_after is not None,
         "--history": args.history is not None,
         "--max-elements": args.max_elements != MAX_ELEMENTS,
     }
     if given := [flag for flag, value in elsewhere.items() if value]:
         raise ValueError(
             f"--config describes the whole dashboard; drop {', '.join(given)} "
-            "(sources, title, history and limits are set in the file)"
+            "(the file says what the dashboard shows and how it looks; the "
+            "command line only where it runs: --host, --port, --token, --open, "
+            "--debug)"
         )
     from . import WebDashboard
     from .history import History
@@ -336,10 +348,10 @@ def config_build(
         host=args.host,
         port=args.port,
         title=dashboard.title,
-        theme=args.theme,
+        theme=dashboard.theme,
         token=args.token,
-        stale_after=args.stale_after,
-        debug=args.debug or dashboard.debug,
+        stale_after=dashboard.stale_after,
+        debug=args.debug,
         open_browser=args.open,
     )
     return monitor, dashboard.sources, [web]

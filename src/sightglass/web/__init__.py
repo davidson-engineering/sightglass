@@ -49,14 +49,13 @@ from typing import Any
 from aiohttp import WSCloseCode, WSMsgType, web
 
 from ..decoders import DecodeError, KeyValueDecoder, flatten
-from ..monitor import TITLE, Monitor, WriteError
+from ..monitor import THEMES, TITLE, Monitor, WriteError
 from ..signals import RESOLUTION, slot_at
 
 logger = logging.getLogger(__name__)
 
 ASSETS = Path(__file__).parent / "static"
 MONITOR_KEY = web.AppKey("monitor", Monitor)
-THEMES = ("classic", "terminal")
 HISTORY_POINTS = 600
 """Points per id from ``GET /history`` unless it asks for a number."""
 HISTORY_MAX_POINTS = 10_000

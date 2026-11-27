@@ -43,6 +43,8 @@ MAX_ELEMENTS = 2000
 """The most ids that get an element of their own, unless told otherwise."""
 TITLE = "Dashboard"
 """The page heading, unless given one."""
+THEMES = ("classic", "terminal")
+"""The pages' looks; the first is the default."""
 
 WRITES_ENV = "SIGHTGLASS_ALLOW_WRITES"
 """The environment variable that must be ``1`` for any value to be written to

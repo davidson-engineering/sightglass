@@ -231,6 +231,8 @@ ids = ["p.{name}.value.0.*", "p.level"]
         ["--terminal"],
         ["--demo"],
         ["--rest-interval", "2"],
+        ["--theme", "terminal"],
+        ["--stale-after", "2"],
     ],
 )
 def test_the_cli_refuses_options_the_file_replaces(tmp_path, argv):
@@ -283,3 +285,24 @@ ids = ["p.{name}.value.*"]
     finally:
         monitor.stop()
         await server.close()
+
+
+def test_the_file_says_what_the_dashboard_is_the_cli_where_it_runs(tmp_path):
+    path = write(tmp_path, 'theme = "terminal"\nstale_after = 3\n' + MINIMAL)
+    argv = ["--config", str(path), "--port", "0", "--token", "t", "--debug"]
+    _, _, (web_output,) = build(parser().parse_args(argv))
+    assert (web_output.theme, web_output.stale_after) == ("terminal", 3)
+    assert (web_output.port, web_output.token, web_output.debug) == (0, "t", True)
+
+
+@pytest.mark.parametrize(
+    ("setting", "error"),
+    [
+        ('theme = "neon"', "theme must be classic or terminal"),
+        ("stale_after = 0", "stale_after in the config must be a number above 0"),
+        ("debug = true", "unknown 'debug'"),  # how it runs: --debug
+    ],
+)
+def test_the_files_display_settings_are_checked(tmp_path, setting, error):
+    with pytest.raises(ValueError, match=error):
+        load(write(tmp_path, setting + "\n" + MINIMAL))
