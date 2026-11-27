@@ -192,14 +192,14 @@ This one needs a PLC, or a PC running a TwinCAT runtime. On
 Linux and macOS the PLC needs a route to this computer; sightglass says what
 to add if it doesn't answer. Writing also needs `--allow-writes`, `--token`
 and `SIGHTGLASS_ALLOW_WRITES=1`: see
-[the README](../README.md#beckhoff-twincat-plcs-ads).
+[Sources](../docs/sources.md#write-to-the-plc-behind-four-checks).
 
 ## 10. A dashboard from a config file (a REST API)
 
 A whole dashboard in one TOML file: where the values come from (a web service
 that answers GET with JSON, polled five times a second) and what to show. No
 code and no page to write. Examples 10 to 12 are built the same way, and share
-the words the README defines (dashboard, source, section, panel, plot): a
+the words [the config docs](../docs/config.md#the-words-the-config-uses) define (dashboard, source, section, panel, plot): a
 folder with `dashboard.toml`, commented line by line, a stand-in for the real
 source (`fake_*.py`), so each runs with nothing else installed, and
 `dashboard.py`, which starts the stand-in and runs `sightglass --config` on the
@@ -222,8 +222,8 @@ uv run --all-extras examples/rest_grid/dashboard.py http://host:8000/api/arrays
 ```
 
 For your own API, copy `dashboard.toml`, change the `url`, `prefix`, `select`
-and the panels, and run `sightglass --config your.toml`. The README describes
-every key.
+and the panels, and run `sightglass --config your.toml`.
+[Dashboards from a config file](../docs/config.md) describes every key.
 
 ## 11. A PLC as readings and plots (ADS)
 
@@ -261,4 +261,5 @@ INFLUX_TOKEN=... uv run --all-extras examples/influx_cells/dashboard.py http://h
 ![The cells wall display: a gauge per cell for voltage, then current as values, health as lamps, and the voltages plotted over the last 5 minutes and the last minute](../docs/influx-cells.webp)
 
 For your own bucket, edit the file's `org`, `bucket`, `measurement` and the ids
-its panels show. The README describes every key.
+its panels show. [Dashboards from a config file](../docs/config.md) describes
+every key.

@@ -4,7 +4,8 @@
 can make an HTTP request, in a browser (default) or the terminal. Values are
 sent by id (`"progress"`, `"X.velocity"`); the first value sent for an id
 creates its display. Print this guide from any project with
-`sightglass --guide`; full reference: `sightglass --help` and the README.
+`sightglass --guide`; full reference: `sightglass --help`, the README and
+https://github.com/davidson-engineering/sightglass/blob/main/docs/.
 
 ## 1. Install
 
@@ -28,7 +29,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost; `--json`, `--csv`, `--binary` as for serial) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | A REST API that answers GET with JSON | `sightglass --rest http://host:8000/metrics` (repeat `--rest`; `--rest-interval`, `--rest-header 'X-Api-Key: ...'`), or `RestSource("http://host/metrics", interval=2)`; needs `[rest]` |
-| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; see the README |
+| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; every key: https://github.com/davidson-engineering/sightglass/blob/main/docs/config.md |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
 | Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 
@@ -149,7 +150,7 @@ send; send({"status": "done"})` sends one message immediately and raises
 ```bash
 sightglass --serial auto --csv temperature,humidity   # device prints "21.5,48\n"
 sightglass --serial /dev/ttyUSB0 --json               # {"temperature": 21.5}
-sightglass --serial auto --binary 1=X,2=Y,10=velocity # binary frames, see README
+sightglass --serial auto --binary 1=X,2=Y,10=velocity # binary frames: docs/sources.md
 ```
 
 `auto` picks the first USB serial device. The source waits for the device and

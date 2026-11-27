@@ -21,7 +21,10 @@ DOCS = {
     "README.md": ROOT / "README.md",
     "GUIDE.md": ROOT / "src" / "sightglass" / "GUIDE.md",
     "examples/README.md": ROOT / "examples" / "README.md",
+    # The reference the README links to.
+    **{f"docs/{p.name}": p for p in sorted((ROOT / "docs").glob("*.md"))},
 }
+REPO = "https://github.com/davidson-engineering/sightglass/blob/main/"
 EXAMPLES = sorted((ROOT / "examples").rglob("*.py"))
 
 
@@ -52,7 +55,6 @@ def check_imports(name: str, source: str) -> None:
 @pytest.mark.parametrize("name", [n for n in DOCS if n != "examples/README.md"])
 def test_python_snippets_compile_and_import_real_names(name):
     blocks = python_blocks(DOCS[name])
-    assert blocks
     for block in blocks:
         check_imports(name, block)
 
@@ -124,3 +126,34 @@ def test_example_interface_file_is_valid():
     settings = read_interface(ROOT / "examples" / "plc.toml")
     writable = [v.name for v in parse_variables(settings["variables"]) if v.write]
     assert writable == ["GVL.nSetpoint"]
+
+
+def anchor(heading: str) -> str:
+    """GitHub's id for a Markdown heading."""
+    text = re.sub(r"[^\w\- ]", "", heading.strip().lower())
+    return text.replace(" ", "-")
+
+
+@pytest.mark.parametrize("name", DOCS)
+def test_links_to_the_docs_reach_a_file_and_heading_that_exist(name):
+    """The README links with whole URLs (it is also the PyPI page); the other
+    pages link relatively. Either way the file, and its heading, must exist."""
+    path = DOCS[name]
+    text = path.read_text("utf-8")
+    links = re.findall(
+        r"\]\((" + re.escape(REPO) + r"[^)\s]+|[^):\s]+\.md(?:#[^)\s]*)?)\)", text
+    )
+    for link in links:
+        target, _, fragment = link.partition("#")
+        if target.startswith(REPO):
+            file = ROOT / target.removeprefix(REPO)
+        else:
+            file = (path.parent / target).resolve()
+        assert file.exists(), f"{name}: {link}"
+        if fragment and file.suffix == ".md":
+            headings = re.findall(r"^#+ (.+)$", file.read_text("utf-8"), re.M)
+            assert fragment in {anchor(h) for h in headings}, f"{name}: {link}"
+    # Same-page anchors.
+    headings = {anchor(h) for h in re.findall(r"^#+ (.+)$", text, re.M)}
+    for fragment in re.findall(r"\]\(#([^)]+)\)", text):
+        assert fragment in headings, f"{name}: #{fragment}"
