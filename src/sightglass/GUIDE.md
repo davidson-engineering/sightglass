@@ -282,8 +282,12 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
   ratio, or `height: calc(var(--value) * 100%)` for a level.
 - **Plots against time:** `data-plot` names ids or patterns (space-separated,
   `*` for any characters) and draws them over the last `data-seconds`, live,
-  in the element's CSS `color` and `font`. It needs the dashboard's history
-  (`--history`); without it the element gets `data-plot-error`.
+  in the element's CSS `color` and `font`; two to eight ids get a colour
+  each and a legend. History keeps values as sent: `data-plot-units="MB"`
+  and `data-plot-scale="0.00000095367431640625"` show bytes as MB. Plot
+  values of different units in separate plots: a plot has one value axis.
+  It needs the dashboard's history (`--history`); without it the element
+  gets `data-plot-error`.
   `data-plot-mode="heatmap"` draws a row per id instead, marking where each
   goes far from its usual value: for hundreds or thousands of ids.
 - **Several feeds:** `data-stale-after="3"` gives an element
