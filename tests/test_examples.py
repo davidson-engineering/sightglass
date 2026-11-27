@@ -3,7 +3,6 @@ each file asks its panels to show is what its stand-in source makes."""
 
 import fnmatch
 import importlib.util
-import sys
 import types
 from pathlib import Path
 
@@ -12,7 +11,7 @@ import pytest
 from sightglass.cli import build, parser
 from sightglass.dashboard import load
 
-from .conftest import until
+from .conftest import needs_twincat_router, until
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 CONFIGS = sorted(EXAMPLES.glob("*/dashboard.toml"))
@@ -31,7 +30,16 @@ def shown(dashboard) -> list[str]:
     return [pattern for panel in dashboard.panels for pattern in panel.ids]
 
 
-@pytest.mark.parametrize("config", CONFIGS, ids=lambda p: p.parent.name)
+@pytest.mark.parametrize(
+    "config",
+    [
+        pytest.param(c, marks=needs_twincat_router)
+        if c.parent.name == "ads_press"
+        else c
+        for c in CONFIGS
+    ],
+    ids=lambda p: p.parent.name,
+)
 def test_a_config_example_has_a_runner_and_a_stand_in_source(config):
     folder = config.parent
     assert (folder / "dashboard.py").exists()
@@ -98,7 +106,7 @@ async def test_the_influxdb_example_shows_what_its_fake_server_makes(monkeypatch
         await server.close()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="ADS needs pyads' own router")
+@needs_twincat_router
 async def test_the_ads_example_shows_what_its_fake_plc_makes():
     from sightglass.fake_plc import FakePlc, FakePlcServer
 

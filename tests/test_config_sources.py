@@ -19,7 +19,7 @@ from sightglass import (
 from sightglass.dashboard import load
 from sightglass.sources.influx import flux, rows
 
-from .conftest import until
+from .conftest import needs_twincat_router, until
 
 PANEL = """
 [[panel]]
@@ -36,6 +36,7 @@ def sources(tmp_path, source, panel=PANEL):
 # --- the config file ---------------------------------------------------------
 
 
+@needs_twincat_router
 def test_an_ads_source_is_described_in_the_file(tmp_path):
     from sightglass import AdsSource
 
@@ -58,6 +59,7 @@ ip = "10.0.0.5"
     assert not source.allow_writes  # a dashboard file never writes to a PLC
 
 
+@needs_twincat_router
 def test_an_ads_source_can_use_an_interface_file_beside_the_config(tmp_path):
     (tmp_path / "plc.toml").write_text(
         'target = "5.12.34.56.1.1"\n[variables]\n"GVL.fTemperature" = {}\n', "utf-8"
@@ -69,19 +71,27 @@ def test_an_ads_source_can_use_an_interface_file_beside_the_config(tmp_path):
 @pytest.mark.parametrize(
     ("source", "message"),
     [
-        ('type = "ads"', "needs a target"),
-        ('type = "ads"\ntarget = "5.12.34.56.1.1"', "variables .* must be names"),
-        (
-            'type = "ads"\nfile = "plc.toml"\ntarget = "5.12.34.56.1.1"',
-            "described in the file",
-        ),
-        ('type = "ads"\nfile = "missing.toml"', "missing.toml"),
-        ('type = "ads"\ntarget = "x:y"\nvariables = ["A.*"]', "expected an AMS"),
-        (
-            'type = "ads"\ntarget = "5.12.34.56.1.1"\n'
-            'variables = { "GVL.n" = { write = true } }',
-            "never writes to the PLC; drop write = true from GVL.n",
-        ),
+        *[
+            pytest.param(source, message, marks=needs_twincat_router)
+            for source, message in [
+                ('type = "ads"', "needs a target"),
+                ('type = "ads"\ntarget = "5.1.2.3.1.1"', "variables .* must be names"),
+                (
+                    'type = "ads"\nfile = "plc.toml"\ntarget = "5.12.34.56.1.1"',
+                    "described in the file",
+                ),
+                ('type = "ads"\nfile = "missing.toml"', "missing.toml"),
+                (
+                    'type = "ads"\ntarget = "x:y"\nvariables = ["A.*"]',
+                    "expected an AMS",
+                ),
+                (
+                    'type = "ads"\ntarget = "5.12.34.56.1.1"\n'
+                    'variables = { "GVL.n" = { write = true } }',
+                    "never writes to the PLC; drop write = true from GVL.n",
+                ),
+            ]
+        ],
         ('type = "zmq"\npattern = "pub"', "pattern .* sub or pull"),
         ('type = "zmq"\nfields = ["a"]', 'goes with decoder = "csv"'),
         ('type = "zmq"\ndecoder = "csv"', "needs fields"),

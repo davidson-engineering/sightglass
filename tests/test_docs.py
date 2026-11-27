@@ -14,6 +14,8 @@ import sightglass.client
 from sightglass.cli import guide, parser
 from sightglass.plc import parse_variables, read_interface
 
+from .conftest import needs_twincat_router
+
 ROOT = Path(__file__).parent.parent
 DOCS = {
     "README.md": ROOT / "README.md",
@@ -84,7 +86,17 @@ def test_claude_md_imports_the_guide():
     assert "@src/sightglass/GUIDE.md" in (ROOT / "CLAUDE.md").read_text("utf-8")
 
 
-@pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    "path",
+    [
+        # sightglass.fake_plc imports pyads
+        pytest.param(p, marks=needs_twincat_router)
+        if "sightglass.fake_plc" in p.read_text("utf-8")
+        else p
+        for p in EXAMPLES
+    ],
+    ids=lambda p: p.name,
+)
 def test_examples_compile_and_import_real_names(path):
     check_imports(path.name, path.read_text("utf-8"))
 
