@@ -80,7 +80,11 @@ class Element:
 
 
 class TextElement(Element):
-    """A single value shown as text, optionally scaled and number-formatted."""
+    """A single value shown as text, optionally scaled and number-formatted.
+
+    In the terminal, ``caption`` (``"Speed: "``) is drawn in place of the
+    fixed-width label column, for a layout of your own.
+    """
 
     def __init__(
         self,
@@ -88,7 +92,7 @@ class TextElement(Element):
         *,
         label: str | None = None,
         value: Any = "",
-        prefix: str = "",
+        caption: str = "",
         units: str = "",
         scale: float | None = None,
         format: TextFormat | None = None,
@@ -96,7 +100,7 @@ class TextElement(Element):
         border: bool = False,
     ):
         super().__init__(id, label=label, border=border)
-        self.prefix = prefix
+        self.caption = caption
         self.units = units
         self.scale = scale
         self.format = format
@@ -120,8 +124,8 @@ class TextElement(Element):
     def render(self, width: int) -> str:
         units = f" {self.units}" if self.units else ""
         value = f"{styled(self.text, self.style)}{units}"
-        if self.prefix:  # the caller chose the layout
-            return f"{self.prefix}{value}"
+        if self.caption:  # the caller chose the layout
+            return f"{self.caption}{value}"
         return f"{fit(self.label, self.label_width)} {value}"
 
     def describe(self) -> dict[str, JSON]:
@@ -175,7 +179,7 @@ class ProgressBar(Element):
 
 
 class RangeBar(Element):
-    """A value within ``[min_value, max_value]``, drawn as a marker on a track.
+    """A value within ``[min, max]``, drawn as a marker on a track.
 
     The marker is clamped to the track, but the text always shows the actual
     (scaled) value so out-of-range readings are never hidden. Units get a
@@ -187,12 +191,12 @@ class RangeBar(Element):
         self,
         id: str,
         *,
-        min_value: float = 0,
-        max_value: float = 100,
+        min: float = 0,
+        max: float = 100,
         label: str | None = None,
         units: str = "",
         scale: float = 1,
-        precision: int = 2,
+        format: TextFormat | None = None,
         label_width: int = 12,
         value_width: int = 7,
         units_width: int = 4,
@@ -203,13 +207,13 @@ class RangeBar(Element):
         border: bool = False,
     ):
         super().__init__(id, label=label, border=border)
-        if max_value <= min_value:
-            raise ValueError("max_value must be greater than min_value")
-        self.min_value = min_value
-        self.max_value = max_value
+        if max <= min:
+            raise ValueError("max must be greater than min")
+        self.min = min
+        self.max = max
         self.units = units
         self.scale = scale
-        self.precision = precision
+        self.format = format or TextFormat(precision=2)
         self.label_width = label_width
         self.value_width = value_width
         self.units_width = units_width
@@ -226,15 +230,15 @@ class RangeBar(Element):
     def ratio(self) -> float | None:
         if self.value is None:
             return None
-        clamped = min(max(self.value, self.min_value), self.max_value)
-        return (clamped - self.min_value) / (self.max_value - self.min_value)
+        clamped = min(max(self.value, self.min), self.max)
+        return (clamped - self.min) / (self.max - self.min)
 
     @property
     def text(self) -> str:
         if self.value is None:
             number = NO_VALUE.rjust(self.value_width)
         else:
-            number = f"{self.value:>{self.value_width}.{self.precision}f}"
+            number = self.format.format(self.value).rjust(self.value_width)
         return f"{number} {self.units}" if self.units else number
 
     def to_json(self) -> JSON:
@@ -262,8 +266,8 @@ class RangeBar(Element):
         return {
             **super().describe(),
             "units": self.units,
-            "min": self.min_value,
-            "max": self.max_value,
+            "min": self.min,
+            "max": self.max,
         }
 
 
@@ -477,6 +481,9 @@ def parse_bool(value: Any) -> bool:
 
 
 LAMP = "●"
+# How lamps and machine states are drawn in the terminal unless given a Style.
+ON_STYLE = Style(fg="green", bold=True)
+OFF_STYLE = Style(fg="red", bold=True)
 
 
 class IndicatorLamp(Element):
@@ -487,13 +494,13 @@ class IndicatorLamp(Element):
         id: str,
         *,
         label: str | None = None,
-        on_color: str = "green",
-        off_color: str = "red",
+        on_style: Style | None = None,
+        off_style: Style | None = None,
         border: bool = False,
     ):
         super().__init__(id, label=label, border=border)
-        self.on_style = Style(fg=on_color, bold=True)
-        self.off_style = Style(fg=off_color, bold=True)
+        self.on_style = on_style or ON_STYLE
+        self.off_style = off_style or OFF_STYLE
         self.value = False
 
     def update(self, value: Any) -> None:
@@ -527,14 +534,14 @@ class MachineState(Element):
         *,
         states: Sequence[str],
         label: str | None = None,
-        on_color: str = "green",
-        off_color: str = "red",
+        on_style: Style | None = None,
+        off_style: Style | None = None,
         border: bool = False,
     ):
         super().__init__(id, label=label, border=border)
         self.states = list(states)
-        self.on_style = Style(fg=on_color, bold=True)
-        self.off_style = Style(fg=off_color, bold=True)
+        self.on_style = on_style or ON_STYLE
+        self.off_style = off_style or OFF_STYLE
         self.bits = 0
 
     def update(self, value: Any) -> None:

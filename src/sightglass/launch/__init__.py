@@ -64,9 +64,9 @@ def build_monitor() -> Monitor:
         Sparkline("velocity", points=300, interval=1, format=fixed(0)),
         TextElement("downrange", format=fixed(0)),
         TextElement("stage"),
-        RangeBar("q", max_value=40, precision=1),  # dynamic pressure, kPa
-        RangeBar("acceleration", max_value=5, precision=2),  # g
-        RangeBar("throttle", max_value=100, precision=0),  # %
+        RangeBar("q", max=40, format=fixed(1)),  # dynamic pressure, kPa
+        RangeBar("acceleration", max=5, format=fixed(2)),  # g
+        RangeBar("throttle", max=100, format=fixed(0)),  # %
         TextElement("pitch", format=fixed(1)),
         MachineState("engines", states=ENGINES),
         MachineState("events", states=EVENTS),

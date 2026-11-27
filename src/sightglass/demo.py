@@ -24,6 +24,7 @@ AXES = ["X", "Y", "Z"]
 
 
 def build_monitor() -> Monitor:
+    tenths = TextFormat(precision=1)
     monitor = Monitor()
     monitor.add_group(
         "job",
@@ -37,10 +38,8 @@ def build_monitor() -> Monitor:
         monitor.add_group(
             axis,
             [
-                RangeBar(
-                    "velocity", min_value=-10, max_value=10, units="mm/s", precision=1
-                ),
-                RangeBar("torque", min_value=-5, max_value=5, units="Nm", precision=1),
+                RangeBar("velocity", min=-10, max=10, units="mm/s", format=tenths),
+                RangeBar("torque", min=-5, max=5, units="Nm", format=tenths),
             ],
         )
     monitor.add(

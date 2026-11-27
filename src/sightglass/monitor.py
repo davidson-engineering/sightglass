@@ -22,6 +22,7 @@ from time import monotonic, perf_counter
 from typing import Any, Protocol, Self, TypeVar
 
 from .elements import JSON, Element, IndicatorLamp, TextElement
+from .formatting import Style
 from .history import History
 from .signals import Signals
 
@@ -33,6 +34,9 @@ Update = Mapping[str, Any]
 # Unknown ids are reported once each; stop remembering new ones past this many
 # so a noisy link can't grow memory without bound.
 _MAX_REPORTED_KEYS = 1000
+
+# A lamp the monitor creates for a boolean is white when off, not alarming red.
+UNLIT = Style(fg="white", bold=True)
 
 WRITES_ENV = "SIGHTGLASS_ALLOW_WRITES"
 """The environment variable that must be ``1`` for any value to be written to
@@ -220,7 +224,7 @@ class Monitor:
             )
             return None
         if isinstance(value, bool):
-            element: Element = IndicatorLamp(key, off_color="white")
+            element: Element = IndicatorLamp(key, off_style=UNLIT)
         else:
             element = TextElement(key)
         self._register(element)

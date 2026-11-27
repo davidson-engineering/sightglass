@@ -8,6 +8,7 @@ from sightglass import (
     ProgressBar,
     RangeBar,
     Sparkline,
+    Style,
     Table,
     TextElement,
     TextFormat,
@@ -25,8 +26,8 @@ def test_empty_id_is_rejected():
         TextElement("")
 
 
-def test_text_element_formats_value_not_prefix():
-    text = TextElement("x", prefix="X: ", units="mm", format=TextFormat(precision=2))
+def test_text_element_formats_value_not_caption():
+    text = TextElement("x", caption="X: ", units="mm", format=TextFormat(precision=2))
     text.update("1.5")
     assert text.render(40) == "X: 1.50 mm"
     assert text.to_json() == "1.50"
@@ -53,7 +54,7 @@ def test_progress_bar():
 
 
 def test_range_bar_shows_actual_value_but_clamps_marker():
-    bar = RangeBar("r", min_value=-10, max_value=10, units="mm", precision=1)
+    bar = RangeBar("r", min=-10, max=10, units="mm", format=TextFormat(precision=1))
     assert bar.to_json() == {"text": "- mm", "ratio": None}  # no data yet
     assert "|" not in bar.render(50)
     bar.update(25)
@@ -227,3 +228,16 @@ def test_sparkline_scale():
     )
     spark.update(2048)
     assert spark.to_json() == {"text": "2.0 KB/s", "values": [2.0]}
+
+
+def test_range_bar_takes_a_text_format_like_other_elements():
+    bar = RangeBar("r", min=-1, max=1, format=TextFormat(precision=1, force_sign=True))
+    bar.update(0.25)
+    assert bar.to_json() == {"text": "+0.2", "ratio": 0.625}
+
+
+def test_lamps_take_styles_like_other_elements():
+    lit = Style(fg=214)
+    lamp = IndicatorLamp("pump", on_style=lit)
+    lamp.update(True)
+    assert lamp.render(20).endswith(lit.apply("●"))

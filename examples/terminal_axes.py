@@ -31,6 +31,7 @@ from sightglass import (
     SimulatedSource,
     Style,
     TerminalDisplay,
+    TextFormat,
     ZmqSource,
 )
 
@@ -56,7 +57,7 @@ def build_monitor() -> Monitor:
     monitor.add(
         Coordinate("position", label="Position", units="mm", style=Style(bold=True))
     )
-    bar = {"min_value": -10, "max_value": 10, "precision": 1, "marker": "█"}
+    bar = {"min": -10, "max": 10, "format": TextFormat(precision=1), "marker": "█"}
     per_axis = [
         RangeBar("velocity", units="mm/s", bar_style=Style(fg="green"), **bar),
         RangeBar("torque", units="Nm", bar_style=Style(fg="yellow"), **bar),

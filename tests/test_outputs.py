@@ -21,7 +21,7 @@ from .conftest import Device, until
 
 def make_monitor() -> Monitor:
     monitor = Monitor()
-    monitor.add(TextElement("speed", prefix="Speed: "))
+    monitor.add(TextElement("speed", caption="Speed: "))
     monitor.add_group("X", [RangeBar("velocity", units="mm/s")])
     monitor.add(ProgressBar("job", border=True))
     monitor.add(MachineState("machine", states=["estop", "enabled"]))

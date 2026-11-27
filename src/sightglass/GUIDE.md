@@ -83,9 +83,7 @@ monitor.add(
     Sparkline("rate", label="Items/s", format=TextFormat(precision=1)),
     IndicatorLamp("healthy", label="Healthy"),
 )
-monitor.add_group(
-    "X", [RangeBar("velocity", min_value=-10, max_value=10, units="mm/s")]
-)
+monitor.add_group("X", [RangeBar("velocity", min=-10, max=10, units="mm/s")])
 monitor.start(outputs=[WebDashboard(title="Batch job")])
 monitor.set("healthy", True)
 monitor.set("X.velocity", 2.5)
@@ -237,7 +235,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | a small line of recent values | `Sparkline(id, points=60, scale=1 / 1024, units="KB/s")` | numbers |
 | a longer line of a fast value | `Sparkline(id, points=300, interval=1)`: one point a second | numbers |
 | progress | `ProgressBar(id, total=100)` | a number |
-| a reading within limits | `RangeBar(id, min_value=0, max_value=100, units="mm")` | a number |
+| a reading within limits | `RangeBar(id, min=0, max=100, units="mm")` | a number |
 | on/off | `IndicatorLamp(id)` | bool, 1/0, on/off |
 | many flags in one integer | `MachineState(id, states=[...])` (bit 0 first) | an integer |
 | a position | `Coordinate(id, axes=("x", "y", "z"))` | a list, or `id.x` |

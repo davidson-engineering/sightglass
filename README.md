@@ -140,7 +140,7 @@ monitor.start()
 | `TextElement` | a value, optionally scaled and number-formatted | any value |
 | `Sparkline` | a number and a chart of its recent history (`interval=1`: one point a second, for longer spans of fast values) | a number |
 | `ProgressBar` | a filling bar from 0 to `total` | a number |
-| `RangeBar` | a marker on a min to max track | a number |
+| `RangeBar` | a marker on a track from `min` to `max` | a number |
 | `IndicatorLamp` | on/off | `True`/`False`, `1`/`0`, `on`/`off` |
 | `MachineState` | named on/off states packed into one integer | an integer (bit 0 = first state) |
 | `Coordinate` | a multi-axis position | a list, or per axis: `"<id>.x"` |
@@ -155,6 +155,8 @@ ids `X.<id>`, so one list can serve several axes.
 `TextFormat(width=10, precision=3, force_sign=True, padding="0")` turns `27.31`
 into `+00027.310`. `Style(fg, bg, bold, dim)` adds colour in the terminal:
 a colour name, or one of xterm's 256 colour numbers (`Style(fg=214)` is amber).
+Every element that shows a number takes `format=TextFormat(...)`; lamps and
+machine states take `on_style=` and `off_style=`.
 
 For a fixed, curated dashboard use `Monitor(strict=True)`: unknown ids are
 then rejected and logged (once per id) instead of creating elements.

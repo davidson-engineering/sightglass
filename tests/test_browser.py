@@ -21,6 +21,7 @@ from sightglass import (
     RangeBar,
     Sparkline,
     TextElement,
+    TextFormat,
     WebDashboard,
 )
 from sightglass.sources._poll import Feed
@@ -68,7 +69,7 @@ def serve(tmp_path):
 async def test_text_width_and_state_bindings_follow_the_values(page, serve):
     monitor = Monitor()
     monitor.add(
-        RangeBar("speed", max_value=200, units="km/h", precision=0),
+        RangeBar("speed", max=200, units="km/h", format=TextFormat(precision=0)),
         IndicatorLamp("pump"),
     )
     await page.goto(
@@ -117,7 +118,7 @@ async def test_sparkline_binding_draws_the_history(page, serve):
 
 async def test_var_binding_hands_numbers_to_css(page, serve):
     monitor = Monitor()
-    monitor.add(RangeBar("q", max_value=40), TextElement("pitch"), IndicatorLamp("lit"))
+    monitor.add(RangeBar("q", max=40), TextElement("pitch"), IndicatorLamp("lit"))
     await page.goto(
         serve(
             '<div id="q" data-bind="q.ratio" data-mode="var"></div>'
@@ -271,7 +272,7 @@ async def test_generic_page_draws_declared_and_new_elements(page, serve):
 
 async def test_signals_view_lists_every_value_sent_with_its_last_minute(page, serve):
     monitor = Monitor()
-    monitor.add(RangeBar("speed", max_value=200, units="km/h"))
+    monitor.add(RangeBar("speed", max=200, units="km/h"))
     monitor.update({"speed": 50, "axis10.pos": 2, "axis2.pos": 1, "status": "ok"})
     sockets = []
     page.on("websocket", lambda socket: sockets.append(socket))
