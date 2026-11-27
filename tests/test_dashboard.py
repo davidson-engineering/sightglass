@@ -183,6 +183,13 @@ def test_the_page_says_which_instance_it_is(tmp_path):
     assert "v2.1" not in load(other).page()  # no version, none shown
 
 
+@pytest.mark.parametrize(("version", "shown"), [("1.2", "v1.2"), ("spike", "spike")])
+def test_the_header_puts_v_only_before_a_number(tmp_path, version, shown):
+    path = write(tmp_path, f'version = "{version}"\n' + MINIMAL)
+    identity = re.search(r'<small class="identity">(.*?)</small>', load(path).page())
+    assert identity.group(1).startswith(f"{shown} · dashboard.toml")
+
+
 def test_heatmap_panels_say_so(tmp_path):
     page = load(write(tmp_path, MINIMAL + 'mode = "heatmap"')).page()
     assert page.count('data-plot-mode="heatmap"') == 2
