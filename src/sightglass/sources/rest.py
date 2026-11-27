@@ -12,7 +12,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
-from ._poll import Failed, Feed, parse, poll, read_body
+from ._poll import Failed, Feed, describe, parse, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +128,13 @@ class RestSource:
         try:
             async with session.get(endpoint.url) as response:
                 if not response.ok and response.status not in endpoint.accept:
-                    raise Failed(f"HTTP {response.status} {response.reason}")
+                    raise Failed(
+                        f"HTTP {response.status} {response.reason}; its body was "
+                        f"ignored (accept = [{response.status}] shows it)"
+                    )
                 body = await read_body(response, self.max_bytes)
         except (aiohttp.ClientError, TimeoutError) as error:
-            raise Failed(str(error) or type(error).__name__) from None
+            raise Failed(describe(error)) from None
         return await parse(len(body), _document, body, endpoint)
 
     def __repr__(self) -> str:
