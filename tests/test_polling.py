@@ -122,10 +122,11 @@ async def test_a_poll_that_fails_unexpectedly_is_a_failed_poll(
 async def test_a_failure_is_logged_once_and_again_when_its_cause_changes(caplog):
     from sightglass.sources._poll import Failed, poll
 
-    causes = iter(["HTTP 502", "HTTP 502", "refused", "refused", "refused", None])
+    causes = iter(["HTTP 502", "HTTP 502", "refused", "refused", "refused"])
 
     async def fetch():
-        cause = next(causes)
+        # Then answering, however many more polls run before the test stops it.
+        cause = next(causes, None)
         if cause:
             raise Failed(cause)
         return {}
