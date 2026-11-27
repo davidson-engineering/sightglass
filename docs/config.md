@@ -147,6 +147,31 @@ The file says what the dashboard is; the command line says where and how it
 runs. With `--config`, only `--host`, `--port`, `--token`, `--open`, `--debug`
 and `-v` are taken. Any other option is refused with a message naming it.
 
+## Feed it from your own program
+
+A file needs no `[[source]]`. Without one, the dashboard shows the values sent
+to it, as any dashboard does: by `POST /update`, curl, or `Client` from
+another process.
+
+```bash
+sightglass --config dashboard.toml &
+curl -d 'app.cpu=12.5' http://127.0.0.1:8080/update
+```
+
+A Python program can serve the file itself and set values directly:
+
+```python
+from sightglass.dashboard import load
+
+monitor = load("dashboard.toml").start(port=8080)  # prints the address
+monitor.set("app.cpu", 12.5)
+```
+
+`start()` takes what the command line would: `host`, `port`, `token`,
+`debug` and `open_browser`. It reads the file's sources too, if it has any.
+In an asyncio program, `dashboard.monitor()` and `dashboard.web(port=8080)` are
+the two parts: `await monitor.run(sources=dashboard.sources, outputs=[web])`.
+
 ## Sources and their keys
 
 A dashboard takes any number of sources, of any mix, and a panel can show
