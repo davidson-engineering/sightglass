@@ -13,6 +13,11 @@ from sightglass.sources import process
 
 from .conftest import until
 
+# psutil's own answers, read before a test hides psutil (it looks itself up in
+# sys.modules, so calls made while it is hidden fail on Linux).
+STARTED = psutil.Process().create_time()
+CORES = psutil.cpu_count() or 1
+
 
 @pytest.fixture(params=["psutil", "standard library"])
 def kind(request, monkeypatch):
@@ -38,7 +43,7 @@ async def test_a_program_shows_its_cpu_memory_threads_and_uptime(kind):
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-    assert 0 <= values["process.cpu"] <= 100 * (psutil.cpu_count() or 1)
+    assert 0 <= values["process.cpu"] <= 100 * CORES
     assert values["process.rss"] > 10 * 2**20  # this test runner: well over 10 MB
     assert values["process.threads"] == threading.active_count()
     assert values["process.uptime"] >= 0
@@ -63,7 +68,7 @@ def test_cpu_is_the_share_of_one_core_used_since_the_last_sample(kind):
     while time.process_time() < busy:
         pass
     # 0.2 s of CPU, over a little more than 0.2 s of wall time.
-    assert 60 < sampler.sample()["cpu"] <= 100 * (psutil.cpu_count() or 1)
+    assert 60 < sampler.sample()["cpu"] <= 100 * CORES
 
 
 def test_memory_without_psutil_matches_psutils(monkeypatch):
@@ -76,7 +81,7 @@ def test_memory_without_psutil_matches_psutils(monkeypatch):
 
 
 def test_uptime_is_since_the_process_started(kind):
-    started = psutil.Process().create_time()
+    started = STARTED
     uptime = process.Sampler().sample()["uptime"]
     if kind == "standard library" and not sys.platform.startswith("linux"):
         # Elsewhere, without psutil: since sightglass was imported.
@@ -87,11 +92,12 @@ def test_uptime_is_since_the_process_started(kind):
 
 def test_open_files_are_counted_where_the_platform_tells(kind):
     sample = process.Sampler().sample()
-    if sys.platform == "win32" and kind == "standard library":
-        assert "fds" not in sample  # Windows has no count without psutil
+    if sys.platform == "win32":
+        assert "fds" not in sample  # handles, not files
+        assert all(element.id != "process.fds" for element in ProcessSource().elements)
         return
     before = sample["fds"]
-    with open(__file__) as one, open(__file__) as two:  # noqa: F841
+    with open(__file__), open(__file__):
         assert process.Sampler().sample()["fds"] == before + 2
 
 

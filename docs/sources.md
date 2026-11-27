@@ -47,7 +47,7 @@ Once a second it sends, and shows under a `process` heading:
 | `process.cpu` | percent of one core used since the last sample (over 100 with several threads busy) | a chart, `12.5 %` |
 | `process.rss` | resident memory, in bytes | a chart, `74.1 MB` |
 | `process.threads` | Python threads (`threading.active_count()`) | a number |
-| `process.fds` | open files and sockets (handles on Windows) | a number |
+| `process.fds` | open files and sockets (not on Windows) | a number |
 | `process.uptime` | seconds since the process started | `125 s` |
 | `process.gc_collections`, `process.gc_collected` | garbage collector runs, and the objects they freed, since the start | numbers |
 
@@ -58,9 +58,10 @@ sent as 0: it is measured between samples.
 
 It needs nothing installed. With [psutil](https://pypi.org/project/psutil/)
 installed it reads memory, open files and uptime through psutil; without it
-they come from the operating system. Two things need psutil: a count of open
-files on Windows (without it, `process.fds` is not sent), and uptime outside
-Linux (without it, counted from when sightglass was imported).
+they come from the operating system. Uptime outside Linux needs psutil:
+without it, it counts from when sightglass was imported. On Windows
+`process.fds` is not sent: Windows counts handles, which include threads,
+events and registry keys, not just files.
 
 ## Wire formats: decoders
 

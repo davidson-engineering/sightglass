@@ -5,15 +5,16 @@
 Every ``interval`` seconds it sends ``process.cpu`` (percent of one core
 since the last sample), ``process.rss`` (resident memory, in bytes, shown in
 MB), ``process.threads`` (Python threads), ``process.fds`` (open files and
-sockets), ``process.uptime`` (seconds since the process started) and
+sockets, not on Windows), ``process.uptime`` (seconds since the process started) and
 ``process.gc_collections`` / ``process.gc_collected`` (garbage collector
 runs, and the objects they freed). It declares how they look, unless the
 program declared those ids first.
 
 Standard library only. psutil, when installed, is used for memory, open files
 and uptime; without it they come from the operating system directly, except
-on Windows, which has no count of open files, and uptime outside Linux, which
-then counts from when sightglass was imported.
+uptime outside Linux, which then counts from when sightglass was imported.
+Windows has no count of open files: its handles also count threads, events
+and registry keys, so ``process.fds`` isn't sent there.
 """
 
 from __future__ import annotations
@@ -47,7 +48,10 @@ class Sampler:
             psutil = None
         self._process = psutil.Process() if psutil else None
         self._rss = self._psutil_rss if psutil else _stdlib_rss()
-        self._fds = self._psutil_fds if psutil else _stdlib_fds()
+        if sys.platform == "win32":
+            self._fds = None  # handles, not files: see the module's docstring
+        else:
+            self._fds = self._psutil_fds if psutil else _stdlib_fds()
         self.started = self._process.create_time() if psutil else _started()
         self._cpu: tuple[float, float] | None = None  # CPU and wall clock
 
@@ -76,8 +80,6 @@ class Sampler:
         return self._process.memory_info().rss
 
     def _psutil_fds(self) -> int:
-        if sys.platform == "win32":
-            return self._process.num_handles()
         return self._process.num_fds()
 
 
