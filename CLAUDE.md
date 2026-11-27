@@ -14,6 +14,7 @@ instructions.
 ## Commands
 
 ```bash
+make check                              # what CI runs: ruff, then every test (make help lists the rest)
 uv sync --all-extras                    # venv with every extra and dev tool
 uv run playwright install chromium      # once: the browser tests need it
 uv run pytest                           # ~300 tests, ~30 s (-m "not browser" skips Chromium)
@@ -97,12 +98,14 @@ uv run --all-extras python docs/screenshot.py   # retake the README screenshots 
   PLC (memory, symbol table, symbol version) behind pyads' test server on
   127.0.0.1:48898, which must be free. They skip on Windows, where pyads
   needs TwinCAT's router.
-- Serial tests need pseudo-terminals and skip on Windows. CI runs Python
-  3.11 to 3.14 on Linux for pull requests; macOS and Windows only for a
-  `release/...` branch's pull request or a manual run (Actions > CI > Run
-  workflow). A change to platform code (paths, processes, ctypes, signals)
-  needs that manual run before it merges. Check behaviour that differs
-  between versions (e.g. `subprocess`, `asyncio`) on 3.11 too.
+- Serial tests need pseudo-terminals and skip on Windows. Forgejo CI
+  (`.forgejo/workflows/check.yml`) runs `make check` on Python 3.11 on Linux
+  for every pull request and push to `main`. The GitHub mirror keeps
+  `.github/workflows/`: Python 3.11 to 3.14, and macOS and Windows on a
+  manual run there (Actions > CI > Run workflow) of a branch pushed to the
+  `github` remote. A change to platform code (paths, processes, ctypes,
+  signals) needs that manual run before it merges. Check behaviour that
+  differs between versions (e.g. `subprocess`, `asyncio`) on 3.14 too.
 - A bug fix starts with a test that fails without it.
 
 ## Before finishing a change

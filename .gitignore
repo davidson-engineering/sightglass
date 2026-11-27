@@ -170,5 +170,6 @@ cython_debug/
 # Forced inclusions
 !.env
 !.github
+!.forgejo
 !.coveragerc
 !.forge-workflows.yml

@@ -3,20 +3,18 @@
 ## Development
 
 ```bash
-uv sync --all-extras
-uv run playwright install chromium    # once, for the browser tests
-uv run pytest
-uv run ruff check . && uv run ruff format --check .
+make install    # uv sync --all-extras, and Chromium for the browser tests
+make check      # ruff, then every test: what CI runs
+make fmt        # format the code
 ```
 
 The serial tests use pseudo-terminals, so they run on macOS and Linux and are
-skipped on Windows. CI runs the tests on Linux for each supported Python
-version on every pull request and push to `main`. macOS and Windows minutes
-cost far more, so those run for a release's pull request (a branch named
-`release/...`), or on any branch from Actions > CI > Run workflow: use it
-before merging a change to platform code (paths, processes, ctypes). The
-browser tests (`-m browser`) run once, in Chromium on Linux: the page's
-JavaScript is the same everywhere.
+skipped on Windows. Forgejo CI (`.forgejo/workflows/check.yml`) runs
+`make check` on Python 3.11 on Linux for every pull request and push to
+`main`. The GitHub mirror's `.github/workflows/ci.yml` covers Python 3.11 to
+3.14, and macOS and Windows when run by hand (Actions > CI > Run workflow on
+a branch pushed to the `github` remote): use it before merging a change to
+platform code (paths, processes, ctypes).
 
 `uv run --all-extras python docs/screenshot.py` retakes the README's
 screenshots after a change to the launch demo (`src/sightglass/launch/`).
