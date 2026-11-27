@@ -97,7 +97,7 @@ async def test_prefix_select_and_headers(api, consume):
 
 
 async def test_error_statuses_are_ignored_unless_accepted(api, consume, caplog):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.WARNING)  # the default level
     monitor = Monitor()
     consume(
         monitor,
@@ -112,9 +112,29 @@ async def test_error_statuses_are_ignored_unless_accepted(api, consume, caplog):
     assert "flaky.level" not in monitor
     api.state["up"] = True  # it recovers by itself
     await until(lambda: "flaky.level" in monitor)
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1 and "HTTP 500" in warnings[0].getMessage()
-    assert any("answering again" in r.getMessage() for r in caplog.records)
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2 and "HTTP 500" in warnings[0]
+    assert "answering again" in warnings[1]
+
+
+async def test_a_refused_status_warning_names_accept(api, consume, caplog):
+    caplog.set_level(logging.WARNING)
+    monitor = Monitor()
+    consume(monitor, RestSource(url(api, "/health"), interval=0.05))
+    await until(lambda: "accept = [503]" in caplog.text)
+    assert "its body was ignored" in caplog.text
+
+
+async def test_a_refused_connection_does_not_mention_ssl(consume, caplog):
+    caplog.set_level(logging.WARNING)
+    dead = TestServer(web.Application())
+    await dead.start_server()
+    dead_url = url(dead, "/metrics")
+    await dead.close()
+    consume(Monitor(), RestSource(dead_url, interval=0.05))
+    await until(lambda: "cannot connect to" in caplog.text, within=10)
+    assert "connection refused" in caplog.text
+    assert "ssl" not in caplog.text.lower()
 
 
 async def test_unreachable_and_non_json_replies_do_not_stop_the_source(
