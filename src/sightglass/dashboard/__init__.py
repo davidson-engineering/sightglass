@@ -309,12 +309,12 @@ def _sections(data: dict[str, Any]) -> list[Section]:
         title = table.get("title", "")
         if not isinstance(title, str):
             raise ValueError(f"title in {where} must be text")
-        if panels := _panels(tables(table, "panel")):
+        if panels := _panels(tables(table, "panel"), title):
             found.append(Section(title, panels))
         else:
             raise ValueError(f"{where} needs at least one [[section.panel]]")
     return found
 
 
-def _panels(found: list[dict[str, Any]]) -> tuple[Panel, ...]:
-    return tuple(p for i, table in enumerate(found) for p in build(table, i))
+def _panels(found: list[dict[str, Any]], section: str = "") -> tuple[Panel, ...]:
+    return tuple(p for i, table in enumerate(found) for p in build(table, i, section))
