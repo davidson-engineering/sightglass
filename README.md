@@ -91,7 +91,7 @@ curl http://127.0.0.1:8080/values     # what the dashboard shows, as JSON
 
 # Read a device.
 sightglass --serial auto --csv temperature,humidity
-sightglass --zmq tcp://localhost:5556
+sightglass --zmq tcp://localhost:5556 --json      # --csv, --json, --binary: as serial
 sightglass --ads 5.12.34.56.1.1 --vars 'MAIN.*'    # a Beckhoff PLC
 sightglass --rest http://localhost:8000/metrics    # a JSON REST API, polled
 ```

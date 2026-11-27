@@ -92,19 +92,20 @@ def parser() -> argparse.ArgumentParser:
     inputs.add_argument(
         "--baudrate", type=int, default=115200, help="(default: 115200)"
     )
-    serial_format = inputs.add_mutually_exclusive_group()
-    serial_format.add_argument(
+    message_format = inputs.add_mutually_exclusive_group()
+    message_format.add_argument(
         "--csv",
         metavar="FIELDS",
-        help="device sends comma-separated values, in this order",
+        help="the --serial or --zmq device sends comma-separated values, in this "
+        "order (default: key=value pairs)",
     )
-    serial_format.add_argument(
-        "--json", action="store_true", help="device sends JSON objects, one per line"
+    message_format.add_argument(
+        "--json", action="store_true", help="it sends JSON objects, one per message"
     )
-    serial_format.add_argument(
+    message_format.add_argument(
         "--binary",
         metavar="NAMES",
-        help="device sends binary frames; NAMES gives each id byte's name, "
+        help="it sends binary frames; NAMES gives each id byte's name, "
         "e.g. 1=X,10=velocity",
     )
     inputs.add_argument("--zmq", metavar="ENDPOINT", help="receive ZeroMQ messages")
@@ -244,21 +245,29 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
     if args.history is not None:
         monitor.history = History(args.history)
 
+    given = next((f for f in ("csv", "json", "binary") if getattr(args, f)), None)
+    if given and not (args.serial or args.zmq):
+        raise ValueError(
+            "--csv, --json and --binary describe a --serial or --zmq device's messages"
+        )
+    if given and args.serial and args.zmq:
+        raise ValueError(
+            f"--{given} describes one device; with --serial and --zmq use --config, "
+            "which gives each its own decoder"
+        )
+
     if args.serial:
         from . import SerialSource
 
         sources.append(
-            SerialSource(
-                args.serial, baudrate=args.baudrate, decoder=serial_decoder(args)
-            )
+            SerialSource(args.serial, baudrate=args.baudrate, decoder=decoder(args))
         )
-    elif args.csv or args.json or args.binary:
-        raise ValueError("--csv, --json and --binary describe a --serial device")
 
     if args.zmq:
         from . import ZmqSource
 
-        sources.append(ZmqSource(args.zmq, pattern="pull" if args.pull else "sub"))
+        pattern = "pull" if args.pull else "sub"
+        sources.append(ZmqSource(args.zmq, decoder=decoder(args), pattern=pattern))
     elif args.pull:
         raise ValueError("--pull goes with --zmq")
 
@@ -479,7 +488,8 @@ def split_names(text: str) -> list[str]:
     return [name.strip() for name in re.split(r",(?![^\[]*\])", text) if name.strip()]
 
 
-def serial_decoder(args: argparse.Namespace) -> Decoder:
+def decoder(args: argparse.Namespace) -> Decoder:
+    """How a --serial or --zmq device's messages become values."""
     if args.csv:
         return CsvDecoder([name.strip() for name in args.csv.split(",")])
     if args.json:
