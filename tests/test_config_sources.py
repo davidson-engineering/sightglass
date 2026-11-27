@@ -77,6 +77,11 @@ def test_an_ads_source_can_use_an_interface_file_beside_the_config(tmp_path):
         ),
         ('type = "ads"\nfile = "missing.toml"', "missing.toml"),
         ('type = "ads"\ntarget = "x:y"\nvariables = ["A.*"]', "expected an AMS"),
+        (
+            'type = "ads"\ntarget = "5.12.34.56.1.1"\n'
+            'variables = { "GVL.n" = { write = true } }',
+            "never writes to the PLC; drop write = true from GVL.n",
+        ),
         ('type = "zmq"\npattern = "pub"', "pattern .* sub or pull"),
         ('type = "zmq"\nfields = ["a"]', 'goes with decoder = "csv"'),
         ('type = "zmq"\ndecoder = "csv"', "needs fields"),

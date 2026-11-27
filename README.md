@@ -428,13 +428,17 @@ can be shown by a panel):
 | `type` | Keys |
 | --- | --- |
 | `rest` | `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see `Endpoint` and `RestSource` above |
-| `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC |
+| `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC: `write = true` on a variable is refused here (an interface file's marks are left unused) |
 | `zmq` | `endpoint`, `pattern` (`"sub"` or `"pull"`), `bind`, and a `decoder` |
 | `serial` | `port` (default `"auto"`), `baudrate`, and a `decoder` |
 | `influxdb` | InfluxDB 2.x: `url`, `org`, `token`, and a `bucket` (narrowed by `measurement`, `fields`, `tags`) or a Flux `query`; `window`, `id_from`, `prefix`, `interval`, `timeout`: see below |
 
 A `zmq` or `serial` source's `decoder` is `"keyvalue"` (the default), `"json"`,
 `"csv"` with `fields = ["a", "b"]`, or `"binary"` with `names = { "1" = "X" }`.
+
+`timeout` defaults to what each protocol needs: 2 s for a PLC (it answers in
+milliseconds, so longer means the link is down), 5 s for a REST API (a web
+service can be slow), 10 s for InfluxDB (a query over many series takes time).
 
 An `influxdb` source runs its query every `interval` seconds and shows the
 newest point of each series, with the id made by joining the columns named in

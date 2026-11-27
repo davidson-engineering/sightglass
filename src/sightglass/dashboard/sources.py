@@ -110,6 +110,12 @@ def _ads(table: dict[str, Any], where: str, base: Path) -> Source:
         raise ValueError(
             f'variables in {where} must be names (["MAIN.*"]) or a table of types'
         )
+    if isinstance(variables, dict):
+        for name, given in variables.items():
+            if isinstance(given, dict) and given.get("write") is True:
+                raise ValueError(
+                    f"{where} never writes to the PLC; drop write = true from {name}"
+                )
     for key in ("types", "ip"):
         if key in table:
             if not isinstance(table[key], str):
