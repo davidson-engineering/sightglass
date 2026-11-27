@@ -64,6 +64,7 @@
 
     .row { display: grid; grid-template-columns: minmax(96px, 30%) 1fr; gap: 16px;
            align-items: center; padding: 10px 16px; }
+    .row.wide { grid-template-columns: 1fr; gap: 4px; }  /* a log: label above, full card width */
     .row + .row { border-top: 1px solid var(--line); }
     .label { color: var(--muted); overflow-wrap: anywhere; }
     .value { font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
@@ -282,7 +283,7 @@
       }
     });
 
-    const row = (item) => el("div", { className: "row" }, el("div", { className: "label" }, item.label), el("div", { className: "value" }, valueFor(item)));
+    const row = (item) => el("div", { className: item.kind === "LogMonitor" ? "row wide" : "row" }, el("div", { className: "label" }, item.label), el("div", { className: "value" }, valueFor(item)));
 
     function showEmptyState() {
       const hint = document.getElementById("empty").content.cloneNode(true);
