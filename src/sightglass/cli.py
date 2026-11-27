@@ -148,7 +148,7 @@ def parser() -> argparse.ArgumentParser:
         "--config",
         metavar="FILE",
         help="a dashboard described by a TOML file: its sources, and the "
-        "panels that plot them (see the README); replaces the other inputs",
+        "panels that show them (see the README); replaces the other inputs",
     )
     inputs.add_argument(
         "--demo",
@@ -186,6 +186,12 @@ def parser() -> argparse.ArgumentParser:
         type=float,
         metavar="SECONDS",
         help="dim values when no data has arrived for this long",
+    )
+    display.add_argument(
+        "--debug",
+        action="store_true",
+        help="in the signals view (`), show whether the sources and the page "
+        "keep up: polls a second, frames a second, waits",
     )
     display.add_argument(
         "--max-elements",
@@ -276,6 +282,7 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
                 theme=args.theme,
                 token=args.token,
                 stale_after=args.stale_after,
+                debug=args.debug,
                 open_browser=args.open,
             )
         )
@@ -317,6 +324,7 @@ def config_build(
 
     dashboard = load(args.config)
     monitor = Monitor(max_elements=dashboard.max_elements)
+    monitor.add(*dashboard.elements())  # e.g. a number shown to fixed decimals
     # Only what the panels plot: the rest of a source's ids would cost memory
     # and time (8 bytes a slot each) for plots that never draw them.
     monitor.history = History(dashboard.history, only=dashboard.plotted())
@@ -328,6 +336,7 @@ def config_build(
         theme=args.theme,
         token=args.token,
         stale_after=args.stale_after,
+        debug=args.debug or dashboard.debug,
         open_browser=args.open,
     )
     return monitor, dashboard.sources, [web]
@@ -380,6 +389,7 @@ def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
         "--title": args.title != "Monitor",
         "--token": args.token,
         "--stale-after": args.stale_after,
+        "--debug": args.debug,
         "--history": args.history is not None,
         "--max-elements": args.max_elements != 500,
         "--terminal": args.terminal and not terminal,

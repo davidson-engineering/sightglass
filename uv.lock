@@ -1186,6 +1186,9 @@ all = [
     { name = "pyserial" },
     { name = "pyzmq" },
 ]
+influxdb = [
+    { name = "aiohttp" },
+]
 rest = [
     { name = "aiohttp" },
 ]
@@ -1211,14 +1214,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", marker = "extra == 'influxdb'", specifier = ">=3.10" },
     { name = "aiohttp", marker = "extra == 'rest'", specifier = ">=3.10" },
     { name = "aiohttp", marker = "extra == 'web'", specifier = ">=3.10" },
     { name = "pyads", marker = "extra == 'ads'", specifier = ">=3.5.2" },
     { name = "pyserial", marker = "extra == 'serial'", specifier = ">=3.5" },
     { name = "pyzmq", marker = "extra == 'zmq'", specifier = ">=26" },
-    { name = "sightglass", extras = ["ads", "rest", "serial", "web", "zmq"], marker = "extra == 'all'" },
+    { name = "sightglass", extras = ["ads", "influxdb", "rest", "serial", "web", "zmq"], marker = "extra == 'all'" },
 ]
-provides-extras = ["serial", "zmq", "ads", "web", "rest", "all"]
+provides-extras = ["serial", "zmq", "ads", "web", "rest", "influxdb", "all"]
 
 [package.metadata.requires-dev]
 dev = [

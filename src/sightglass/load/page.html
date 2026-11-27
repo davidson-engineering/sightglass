@@ -79,7 +79,7 @@
     .reading { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .unit { font-size: 14px; margin-left: 2px; }
     .meters p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
-    .trend { height: 22px; margin-top: 4px; color: var(--line); }
+    .spark { height: 22px; margin-top: 4px; color: var(--line); }
 
     section { padding: 14px 16px 10px; margin-bottom: 16px; min-width: 0; }
     section h2 {
@@ -138,7 +138,7 @@
       color: var(--crt-bright);
       border-color: var(--crt-fg);
     }
-    html[data-theme="terminal"] .trend,
+    html[data-theme="terminal"] .spark,
     html[data-theme="terminal"] .lines,
     html[data-theme="terminal"] .heat { color: var(--crt-fg); font: 18px var(--crt-font); }
     html[data-theme="terminal"] .heat { color: var(--crt-amber); }
@@ -183,12 +183,12 @@
       <li>
         <h2>CPU, whole dashboard</h2>
         <span class="reading" data-bind="load.cpu.text"></span><span class="unit">% of a core</span>
-        <div class="trend" data-bind="load.cpu.values" data-mode="sparkline"></div>
+        <div class="spark" data-bind="load.cpu.values" data-mode="sparkline"></div>
       </li>
       <li>
         <h2>Event loop, worst delay</h2>
         <span class="reading" data-bind="load.loop.text"></span><span class="unit">ms</span>
-        <div class="trend" data-bind="load.loop.values" data-mode="sparkline"></div>
+        <div class="spark" data-bind="load.loop.values" data-mode="sparkline"></div>
       </li>
       <li>
         <h2>PLC to dashboard</h2>

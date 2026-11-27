@@ -32,7 +32,7 @@
 // against time from the dashboard's history (it needs --history). The code
 // (plot.js) loads only on pages that have one; see it for the details.
 //
-// The signals panel, for checking what a feed sends: every value the dashboard
+// The signals view, for checking what a feed sends: every value the dashboard
 // has accepted, by id, as sent, with a chart of its last minute. The ` key
 // opens and closes it on any page; so does clicking an element marked
 // data-signals-open. Its code (signals.js) loads the first time it opens.
@@ -199,6 +199,11 @@
       retryDelay = 250;
     };
     socket.onmessage = (event) => {
+      // How long the message waited for the page's main thread, and how long
+      // the page took over it: what the signals view reports as the page
+      // keeping up.
+      const began = performance.now();
+      const queued = event.timeStamp > 0 ? began - event.timeStamp : 0;
       const message = JSON.parse(event.data);
       if (message.type === "snapshot") {
         staleAfter = message.staleAfter ?? null;
@@ -207,6 +212,11 @@
         startPlots();
       }
       apply(message.values, message.ages);
+      document.dispatchEvent(
+        new CustomEvent("monitor:message", {
+          detail: { queued, handled: performance.now() - began, merged: message.merged ?? 0 },
+        }),
+      );
     };
     socket.onclose = () => {
       root.dataset.connection = "closed";
@@ -250,21 +260,21 @@
     plotModule.then((module) => plots.forEach(module.start));
   }
 
-  let signals = null; // the panel's module, once loaded
-  const signalsPanel = () => (signals ??= import("/_sightglass/signals.js"));
+  let signals = null; // the view's module, once loaded
+  const signalsView = () => (signals ??= import("/_sightglass/signals.js"));
 
   document.addEventListener("click", (event) => {
     if (!event.target.closest("[data-signals-open]")) return;
-    signalsPanel().then((panel) => panel.open());
+    signalsView().then((view) => view.open());
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "`" || event.ctrlKey || event.metaKey || event.altKey) return;
-    // Typing a ` (in the page or in the panel's filter) is just typing.
+    // Typing a ` (in the page or in the view's filter) is just typing.
     const target = event.composedPath()[0];
     if (target.isContentEditable || target.closest?.("input, textarea, select")) return;
     event.preventDefault();
-    signalsPanel().then((panel) => panel.toggle());
+    signalsView().then((view) => view.toggle());
   });
 
   root.dataset.connection = "connecting";

@@ -23,9 +23,9 @@ of any ids, reduced to about one point per pixel of a plot::
 
     curl 'http://127.0.0.1:8080/history?id=MAIN.fTemp&id=MAIN.fFlow&seconds=60'
 
-Every page that loads ``sightglass.js`` also has a signals panel (the ` key):
+Every page that loads ``sightglass.js`` also has a signals view (the ` key):
 every value sent, by id, with a chart of its last minute, streamed over a
-second WebSocket (``/ws/signals``) only while the panel is open.
+second WebSocket (``/ws/signals``) only while the signals view is open.
 """
 
 from __future__ import annotations
@@ -110,12 +110,15 @@ class WebDashboard:
         stale_after: seconds without new data after which the page dims its
             values, for sources expected to update continuously.
         fps: maximum pushes per second to each browser.
+        debug: show, in the signals view, figures on whether the dashboard and
+            the page keep up (polls a second, frames a second, waits). Off by
+            default: measuring costs the page a little.
         announce: print the address when the server starts.
         open_browser: open the page in a browser once the server is up (not
             on Linux without a display, e.g. over SSH).
 
     The page loads the client from ``/_sightglass/sightglass.js``; the LCD
-    and LED styles and fonts are at ``/_sightglass/panel.css``.
+    and LED styles and fonts are at ``/_sightglass/instruments.css``.
     """
 
     def __init__(
@@ -131,6 +134,7 @@ class WebDashboard:
         theme: str = "classic",
         stale_after: float | None = None,
         fps: float = 30,
+        debug: bool = False,
         announce: bool = True,
         open_browser: bool = False,
     ) -> None:
@@ -150,6 +154,7 @@ class WebDashboard:
         self.theme = theme
         self.stale_after = stale_after
         self.fps = fps
+        self.debug = debug
         self.announce = announce
         self.open_browser = open_browser
         self._runner: web.AppRunner | None = None
@@ -386,6 +391,9 @@ class WebDashboard:
         # Each browser gets its own loop, so a slow one just receives fewer,
         # larger updates instead of holding up the others.
         version, layout = monitor.version, monitor.layout_version
+        merged = (
+            0  # updates sent folded into another: the page was too slow, or the cap
+        )
         try:
             await ws.send_json(self._snapshot(monitor))
             self._record_sent(id(ws), version)
@@ -395,8 +403,13 @@ class WebDashboard:
                     layout = monitor.layout_version
                     await ws.send_json(self._snapshot(monitor))
                 else:
+                    merged += latest - version - 1
                     await ws.send_json(
-                        {"type": "update", "values": monitor.changes_since(version)}
+                        {
+                            "type": "update",
+                            "values": monitor.changes_since(version),
+                            "merged": merged,
+                        }
                     )
                 version = latest
                 self._record_sent(id(ws), version)
@@ -405,13 +418,21 @@ class WebDashboard:
             pass
 
     async def _send_signals(self, ws: web.WebSocketResponse, monitor: Monitor) -> None:
-        """The signals panel's feed: every signal with its last minute, then the
+        """The signals view's feed: every signal with its last minute, then the
         signals that changed, with their slots since the previous message. A
         message goes out every slot even if nothing changed, so the page's
         charts keep moving with the server's clock."""
         version, now = monitor.version, monotonic()
         try:
-            await ws.send_json({"type": "snapshot", **monitor.signals.snapshot(now)})
+            await ws.send_json(
+                {
+                    "type": "snapshot",
+                    "debug": self.debug,
+                    "feeds": monitor.feeds() if self.debug else [],
+                    **monitor.signals.snapshot(now),
+                }
+            )
+            feeds_at = now
             sent = slot_at(now)  # the newest slot the page has
             while not ws.closed:
                 next_slot = (sent + 1) * RESOLUTION - monotonic()
@@ -423,14 +444,18 @@ class WebDashboard:
                 changed = monitor.signals.changes(version, sent, now)
                 version, slot = monitor.version, slot_at(now)
                 if changed or slot != sent:
-                    await ws.send_json(
-                        {
-                            "type": "update",
-                            "slot": slot,
-                            "from": sent,
-                            "signals": changed,
-                        }
-                    )
+                    message = {
+                        "type": "update",
+                        "slot": slot,
+                        "from": sent,
+                        "signals": changed,
+                    }
+                    if (
+                        self.debug and now - feeds_at >= 1
+                    ):  # figures over seconds: not every slot
+                        message["feeds"] = monitor.feeds()
+                        feeds_at = now
+                    await ws.send_json(message)
                     sent = slot
                 await asyncio.sleep(1 / self.fps)
         except ConnectionError:

@@ -75,6 +75,9 @@ async function poll(plot) {
   } else {
     try {
       await fetchPoints(plot);
+      document.dispatchEvent(
+        new CustomEvent("monitor:plot", { detail: { took: performance.now() - started } }),
+      );
       interval = Math.min(Math.max(plot.step * 1000, MIN_INTERVAL), 1000);
     } catch (error) {
       plot.error = error.message; // the dashboard has gone: keep what we have

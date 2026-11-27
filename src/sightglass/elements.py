@@ -272,8 +272,8 @@ SPARK = "▁▂▃▄▅▆▇█"
 
 class Sparkline(Element):
     """A number with a small chart of its last ``points`` values, for spotting
-    trends (throughput, temperature, error rate). Values are multiplied by
-    ``scale`` (e.g. ``1 / 1024`` to show bytes as KB).
+    how a value is changing (throughput, temperature, error rate). Values are
+    multiplied by ``scale`` (e.g. ``1 / 1024`` to show bytes as KB).
 
     With ``interval``, the chart keeps one point per ``interval`` seconds:
     updates within an interval replace its point, so a value sent many times a

@@ -9,7 +9,7 @@ from aiohttp.test_utils import TestServer
 
 from sightglass import RestSource
 from sightglass.cli import build, parser
-from sightglass.dashboard import load, render, span
+from sightglass.dashboard import load, render
 
 from .conftest import until
 
@@ -31,15 +31,19 @@ def write(tmp_path, text):
 def test_a_minimal_config_gets_the_defaults(tmp_path):
     dashboard = load(write(tmp_path, MINIMAL))
     assert dashboard.title == "Dashboard"
-    assert dashboard.max_elements == 2000 and dashboard.card_width == 520
+    assert dashboard.max_elements == 2000 and dashboard.panel_width == 520
     assert dashboard.history == 360  # the longest range, and a minute
     (panel,) = dashboard.panels
-    assert panel.ranges == (300, 60) and panel.mode == "lines"
+    assert [(p.role, p.seconds, p.grow) for p in panel.plots] == [
+        ("secondary", 300, 0.5),
+        ("primary", 60, 1),
+    ]
+    assert panel.mode == "lines"
     (source,) = dashboard.sources
     assert isinstance(source, RestSource) and source.interval == 1.0
 
 
-def test_each_makes_a_panel_per_name_and_ranges_go_longest_first(tmp_path):
+def test_each_makes_a_panel_per_name(tmp_path):
     text = (
         MINIMAL.split("[[panel]]")[0]
         + """
@@ -47,14 +51,15 @@ def test_each_makes_a_panel_per_name_and_ranges_go_longest_first(tmp_path):
 each = ["North", "South"]
 title = "Array {name}"
 ids = ["grid.{name}.value.0.*", "grid.{name}.level"]
-ranges = [60, 600, 60]
+range = 60
+secondary_range = 600
 mode = "heatmap"
 """
     )
     dashboard = load(write(tmp_path, text))
     assert [p.title for p in dashboard.panels] == ["Array North", "Array South"]
     assert dashboard.panels[1].ids == ("grid.South.value.0.*", "grid.South.level")
-    assert dashboard.panels[0].ranges == (600, 60)
+    assert [p.seconds for p in dashboard.panels[0].plots] == [600, 60]
     assert dashboard.panels[0].mode == "heatmap"
     assert dashboard.history == 660
 
@@ -113,15 +118,16 @@ def test_environment_variables_fill_in_a_source_so_secrets_stay_out_of_the_file(
         ("this is not toml", "dashboard.toml"),
         (MINIMAL + "\ncolour = 1", "unknown 'colour'"),
         (
-            MINIMAL.replace('ids = ["a.*"]', 'ids = ["a.*"]\nrange = [60]'),
-            "unknown 'range'",
+            MINIMAL.replace('ids = ["a.*"]', 'ids = ["a.*"]\nrnge = [60]'),
+            "unknown 'rnge'",
         ),
         ('[[source]]\nurl = "http://x"', "at least one .*panel"),
         ('[[panel]]\nids = ["a"]', "at least one .*source"),
         (MINIMAL.replace('ids = ["a.*"]', ""), "needs ids"),
         (MINIMAL.replace('ids = ["a.*"]', "ids = []"), "needs ids"),
-        (MINIMAL + "ranges = [0]", "ranges"),
-        (MINIMAL + 'ranges = ["5 min"]', "ranges"),
+        (MINIMAL + "range = 0", "range in .* above 0"),
+        (MINIMAL + 'secondary_range = "5 min"', "secondary_range in"),
+        (MINIMAL + "ranges = [300, 60]", "unknown .ranges."),
         (MINIMAL + 'mode = "pie"', "mode"),
         (MINIMAL + "each = []", "each"),
         (MINIMAL.replace('url = "http://127.0.0.1:1/x"', ""), "needs a url"),
@@ -140,20 +146,21 @@ def test_a_bad_config_says_what_is_wrong_in_one_line(tmp_path, text, message):
     assert "\n" not in str(error.value)
 
 
-def test_the_page_has_a_card_per_panel_with_a_plot_per_range(tmp_path):
+def test_the_page_has_an_article_per_panel_with_its_plots(tmp_path):
     text = (
         'title = "A & B"\n'
         + MINIMAL.replace("a.*", 'a.*\\" onload=\\"x')
         + 'title = "<b>"\n'
     )
     page = load(write(tmp_path, text)).page()
-    assert "<title>A &amp; B</title>" in page and "<h2>&lt;b&gt;</h2>" in page
+    assert "<title>A &amp; B</title>" in page and "<h3>&lt;b&gt;</h3>" in page
     assert 'onload="x' not in page  # a quote in an id can't open an attribute
-    assert page.count("<section>") == 1 and page.count('class="plot ') == 2
+    assert page.count("<article") == 1 and page.count('class="plot ') == 2
     assert 'data-seconds="300"' in page and 'data-seconds="60"' in page
-    assert 'class="plot range-1 last"' in page  # the shortest is the biggest
+    assert 'class="plot secondary" style="--grow: 0.5"' in page
+    assert 'class="plot primary" style="--grow: 1"' in page
+    assert page.index("secondary") < page.index("primary")  # secondary on top
     assert "/_sightglass/dashboard.css" in page and "sightglass.js" in page
-    assert "top to bottom" in page and "5 minutes" in page and "1 minute" in page
 
 
 def test_the_page_says_which_instance_it_is(tmp_path):
@@ -174,32 +181,10 @@ def test_the_page_says_which_instance_it_is(tmp_path):
     assert "v2.1" not in load(other).page()  # no version, none shown
 
 
-def test_the_legend_is_left_out_when_panels_plot_different_ranges(tmp_path):
-    text = MINIMAL + '[[panel]]\nids = ["b"]\nranges = [30]\n'
-    assert "top to bottom" not in load(write(tmp_path, text)).page()
-
-
 def test_heatmap_panels_say_so(tmp_path):
     page = load(write(tmp_path, MINIMAL + 'mode = "heatmap"')).page()
     assert page.count('data-plot-mode="heatmap"') == 2
     assert render(load(write(tmp_path, MINIMAL))).count("heatmap") == 0
-
-
-@pytest.mark.parametrize(
-    ("seconds", "text"),
-    [
-        (1, "1 second"),
-        (30, "30 seconds"),
-        (60, "1 minute"),
-        (300, "5 minutes"),
-        (90, "90 seconds"),
-        (3600, "1 hour"),
-        (7200, "2 hours"),
-        (0.5, "0.5 seconds"),
-    ],
-)
-def test_span_words(seconds, text):
-    assert span(seconds) == text
 
 
 def test_the_cli_builds_the_dashboard_from_the_file(tmp_path):
@@ -291,7 +276,7 @@ ids = ["p.{name}.value.*"]
                 return response.read().decode()
 
         assert 'data-plot="p.N.value.*"' in get("")
-        assert ".range-0" in get("_sightglass/dashboard.css")
+        assert ".secondary" in get("_sightglass/dashboard.css")
         assert '"p.N.value.0.1"' in get("values")
     finally:
         monitor.stop()

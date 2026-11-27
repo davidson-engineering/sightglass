@@ -20,7 +20,7 @@ Python 3.13, ``monotonic()`` ticks every 15.6 ms, too coarse for 50 ms slots.
 Memory: 8 bytes per slot per signal that has sent a number (two float32s),
 e.g. 96 MB for 1000 signals at 20 slots a second for 10 minutes. float32 holds
 about 7 significant digits, more than a plot can show; exact values are in
-``GET /values`` and the signals panel.
+``GET /values`` and the signals view.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ class Track:
         newest = self.slot
         oldest = newest - self.size + 1
         held = None if math.isnan(self.held) else self.held
-        if step == 1 and self.typecode == "d":  # the signals panel: direct
+        if step == 1 and self.typecode == "d":  # the signals view: direct
             return [self._slot(s, oldest, newest, held) for s in range(first, last + 1)]
         # The kept slots the points cover, copied out of the ring once.
         start = max(first // step * step, oldest)

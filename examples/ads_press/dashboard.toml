@@ -1,0 +1,62 @@
+# A press line on a wall display: the variables of a Beckhoff TwinCAT PLC, read
+# over ADS, as readings and as plots. Run it with
+#
+#   sightglass --config examples/ads_press/dashboard.toml
+#
+# or let dashboard.py start a fake PLC (fake_plc.py) to read, on Linux or macOS.
+
+title = "Press line"
+version = "0.1.0"
+
+# Where the values come from. A PLC's ids are its variable names.
+[[source]]
+type = "ads"
+target = "${PLC_TARGET:-127.0.0.1.1.1}"   # the PLC's AMS net id
+variables = ["GVL.*"]                    # * is any characters: the variables of GVL
+interval = 0.1                           # seconds between reads
+
+# A section is a titled group of panels. This one is what the press is doing
+# now: one panel each, of a type.
+[[section]]
+title = "Now"
+
+[[section.panel]]
+type = "gauge"          # a bar between min and max, and the value above it
+title = "Pressure"
+id = "GVL.fPressure"
+units = "bar"
+precision = 1
+min = 0
+max = 10
+
+[[section.panel]]
+type = "value"          # the value as large text
+title = "Temperature"
+id = "GVL.fTemperature"
+units = "°C"
+precision = 1
+
+[[section.panel]]
+type = "value"
+title = "Parts made"
+id = "GVL.nParts"
+
+[[section.panel]]
+type = "lamp"           # on for true, off for false
+each = ["bRunning", "bDoorOpen"]   # a panel per name; {name} is the name
+title = "{name}"
+id = "GVL.{name}"
+
+# And what it did: a primary plot (the last minute) with a secondary one above
+# it (the last 5 minutes). A trend panel's ids are patterns; this section's two panels
+# are one each for the two analogue variables.
+[[section]]
+title = "Last 5 minutes"
+
+[[section.panel]]
+type = "trend"
+each = ["fPressure", "fTemperature"]
+title = "{name}"
+ids = ["GVL.{name}"]
+range = 60
+secondary_range = 300

@@ -1,4 +1,4 @@
-"""Robot control panel: a web dashboard fed by a microcontroller over serial.
+"""Robot control page: a web dashboard fed by a microcontroller over serial.
 
     python examples/robot_dashboard/dashboard.py              # first USB serial device
     python examples/robot_dashboard/dashboard.py --port /dev/ttyUSB0

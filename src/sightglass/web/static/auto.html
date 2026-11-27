@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Monitor</title>
   <script src="/_sightglass/theme.js"></script>
-  <link rel="stylesheet" href="/_sightglass/panel.css">
+  <link rel="stylesheet" href="/_sightglass/instruments.css">
   <link rel="stylesheet" href="/_sightglass/terminal.css">
   <style>
     :root {
@@ -131,7 +131,7 @@
     html[data-theme="terminal"] .switch[aria-pressed="true"] { background: var(--crt-bg); color: var(--crt-fg); }
     html[data-theme="terminal"] :focus-visible { outline-color: var(--crt-bright); }
 
-    /* Double-ruled panels, their names cut into the top edge. */
+    /* Double-ruled boxes, their names cut into the top edge. */
     html[data-theme="terminal"] #dashboard { gap: 26px; margin-top: 14px; }
     html[data-theme="terminal"] section { position: relative; border: 3px double var(--crt-rule); border-radius: 0; }
     html[data-theme="terminal"] section:has(> h2) { padding-top: 10px; }
@@ -173,7 +173,7 @@
 
     @media (forced-colors: none) and (prefers-reduced-motion: no-preference) {
       html[data-theme="terminal"][data-crt="on"][data-connection="closed"] #connection { animation: crt-blink 1.1s steps(1, end) infinite; }
-      /* Power on: the panels drawn one after another, then their names typed. */
+      /* Power on: the boxes drawn one after another, then their names typed. */
       html[data-theme="terminal"][data-crt="on"] #dashboard > section {
         animation: crt-draw 0.24s steps(6, end) calc(0.25s + var(--boot, 8) * 70ms) backwards; }
       html[data-theme="terminal"][data-crt="on"] #dashboard h2 {

@@ -147,7 +147,7 @@ async def test_web_serves_page_and_assets(client):
     page = await client.get("/")
     assert page.status == 200
     assert "/_sightglass/sightglass.js" in await page.text()
-    for asset in ["sightglass.js", "panel.css", "fonts/DSEG14Modern-Regular.ttf"]:
+    for asset in ["sightglass.js", "instruments.css", "fonts/DSEG14Modern-Regular.ttf"]:
         response = await client.get(f"/_sightglass/{asset}")
         assert response.status == 200, asset
         assert response.headers["Cache-Control"] == "no-cache"
@@ -172,10 +172,23 @@ async def test_web_sends_snapshot_then_only_changes(client):
     assert update == {
         "type": "update",
         "values": {"speed": "3", "machine": {"estop": False, "enabled": True}},
+        "merged": 0,
     }
     client.monitor.update({"X.velocity": 12})
     update = await ws.receive_json(timeout=1)
     assert update["values"] == {"X.velocity": {"text": "12.00 mm/s", "ratio": 0.12}}
+    await ws.close()
+
+
+async def test_web_counts_the_updates_it_folds_into_one_message(client):
+    ws = await client.ws_connect("/ws")
+    await ws.receive_json(timeout=1)
+    for value in (1, 2, 3):  # three updates before the page's next message
+        client.monitor.update({"speed": value})
+    update = await ws.receive_json(timeout=1)
+    assert update["values"]["speed"] == "3" and update["merged"] == 2
+    client.monitor.update({"speed": 4})
+    assert (await ws.receive_json(timeout=1))["merged"] == 2  # a running total
     await ws.close()
 
 
@@ -431,3 +444,13 @@ async def test_web_posts_device_values_with_the_token_only(
     # Without a token nothing in the request is applied; otherwise the
     # values to show are, whatever happened to the device's.
     assert ("note" in monitor) == (token is not None)
+
+
+async def test_the_signals_stream_says_whether_to_show_figures():
+    for debug in (False, True):
+        dashboard = WebDashboard(debug=debug)
+        async with TestClient(TestServer(dashboard.app(Monitor()))) as client:
+            ws = await client.ws_connect("/ws/signals")
+            snapshot = await ws.receive_json(timeout=1)
+            assert snapshot["debug"] is debug
+            await ws.close()

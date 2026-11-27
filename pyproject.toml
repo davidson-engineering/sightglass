@@ -30,7 +30,8 @@ zmq = ["pyzmq>=26"]
 ads = ["pyads>=3.5.2"]  # the first release with wheels (no C++ build)
 web = ["aiohttp>=3.10"]
 rest = ["aiohttp>=3.10"]
-all = ["sightglass[serial,zmq,ads,web,rest]"]
+influxdb = ["aiohttp>=3.10"]
+all = ["sightglass[serial,zmq,ads,web,rest,influxdb]"]
 
 [project.scripts]
 sightglass = "sightglass.cli:main"

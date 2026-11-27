@@ -1,11 +1,12 @@
-// The signals panel: every value the dashboard has accepted, by id, as sent
+// The signals view: every value the dashboard has accepted, by id, as sent
 // (before an element scales or formats it), with a chart of its last minute.
 // For checking what a feed actually sends. sightglass.js loads this module
-// the first time the panel opens: the ` key, or an element marked
-// data-signals-open. In the panel, ` and Escape close it, and typing filters
-// the signals by id.
+// the first time the view opens: the ` key, or an element marked
+// data-signals-open. In the view, ` and Escape close it, and typing filters
+// the signals by id. Above the table: each polling source's polls a second
+// and poll times, and how the page itself is keeping up.
 //
-// The panel lives in a shadow root, so the page's CSS and its own stay apart.
+// The view lives in a shadow root, so the page's CSS and its own stay apart.
 // It follows the page's theme (html[data-theme], html[data-crt]) and its
 // color-scheme: dark on a dark-only page, otherwise as the system. While it
 // is open it streams /ws/signals: a snapshot with every signal's last minute
@@ -25,6 +26,7 @@ const MARKUP = `
              autocomplete="off" spellcheck="false">
       <button type="button" class="close">Close</button>
     </header>
+    <div class="stats"></div>
     <div class="scroll">
       <table>
         <colgroup><col class="name"><col class="value"><col><col class="age"></colgroup>
@@ -48,7 +50,7 @@ let retry = null;
 let ticker = null;
 let frame = 0;
 let observer = null;
-let loaded = false; // a snapshot has arrived since the panel opened
+let loaded = false; // a snapshot has arrived since the view opened
 
 let slots = 120; // per chart, from the server
 let slot = 0; // the newest slot the charts show
@@ -91,6 +93,7 @@ async function build() {
     body: root.querySelector("tbody"),
     count: root.querySelector(".count"),
     status: root.querySelector(".status"),
+    stats: root.querySelector(".stats"),
     filter: root.querySelector("input"),
     empty: root.querySelector(".empty"),
   };
@@ -150,6 +153,7 @@ async function build() {
 }
 
 function shut() {
+  unwatchPage();
   clearTimeout(retry);
   clearInterval(ticker);
   cancelAnimationFrame(frame);
@@ -201,11 +205,11 @@ function receive(message) {
     });
     signal.number = data.number;
     signal.arrived = Date.now() - data.age * 1000;
-    signal.value.textContent = data.text;
-    signal.value.title = data.text;
-    signal.age.textContent = ago(signal.arrived);
+    signal.text = data.text; // written to its row when that is on screen (draw)
     dirty.add(signal);
   }
+  if (message.type === "snapshot" && message.debug) watchPage(); // figures only if the dashboard asks
+  if (message.feeds) showFeeds(message.feeds);
   if (added.length || message.type === "snapshot") place();
   schedule();
 }
@@ -304,6 +308,11 @@ function draw() {
   frame = 0;
   for (const signal of dirty) {
     if (!visible.has(signal)) continue; // drawn when scrolled into view
+    if (signal.value.textContent !== signal.text) {
+      signal.value.textContent = signal.text;
+      signal.value.title = signal.text;
+    }
+    signal.age.textContent = ago(signal.arrived);
     drawChart(signal);
     dirty.delete(signal);
   }
@@ -346,10 +355,168 @@ function drawChart(signal) {
   chart.title = span ? `Lowest ${short(low)}, highest ${short(high)}` : `Steady at ${short(low)}`;
 }
 
+const fixed = (rate) => (rate < 10 ? rate.toFixed(2) : rate.toFixed(1));
 const short = (number) => String(Number(number.toPrecision(6)));
 
 function showAges() {
   for (const signal of visible) signal.age.textContent = ago(signal.arrived);
+  showPage();
+}
+
+// The figures above the table are groups of labelled numbers: a polling
+// source's, then the page's. A number that shows trouble is marked bad.
+let feedGroups = [];
+let pageGroups = [];
+
+function group(title, stats, hint = "") {
+  const box = document.createElement("div");
+  box.className = "set";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  heading.title = hint || title;
+  const row = document.createElement("div");
+  row.className = "figures";
+  box.append(heading, row);
+  for (const [key, value, label, bad] of stats) {
+    const stat = document.createElement("span");
+    stat.className = bad ? "stat bad" : "stat";
+    stat.dataset.stat = key;
+    const number = document.createElement("b");
+    number.textContent = value;
+    const caption = document.createElement("small");
+    caption.textContent = label;
+    stat.append(number, caption);
+    row.append(stat);
+  }
+  return box;
+}
+
+function showStats() {
+  parts.stats.replaceChildren(...feedGroups, ...pageGroups);
+}
+
+const ms = (value) => (value === null ? "-" : `${Math.round(value)} ms`);
+
+// Each polling source: how often it polled, and how long a poll took.
+function showFeeds(feeds) {
+  feedGroups = feeds.map(({ name, rate, took, slowest, failing }) =>
+    group(
+      name.replace(/^https?:\/\//, ""),
+      [
+        ["polls", rate === null ? "-" : fixed(rate), "polls/s", failing],
+        ["took", ms(took && took * 1000), "last poll", failing],
+        ["slowest", ms(slowest && slowest * 1000), "slowest", false],
+      ],
+      `${name}${failing ? " (failing)" : ""}`,
+    ),
+  );
+  showStats();
+}
+
+// Whether the page keeps up, measured while the view is open: the page's
+// frames, how long the dashboard's messages wait for the page and take to
+// apply, and how quickly plots get their points. Figures are for the last
+// second; the page's other code announces what it does with events.
+let page = null;
+let frameId = 0;
+let longTasks = null;
+
+const fresh = () => ({
+  frames: 0, gap: 0, messages: 0, waited: 0, handled: 0,
+  plots: 0, plotSlowest: 0, blocked: 0, longest: 0,
+});
+
+function watchPage() {
+  if (page) return;
+  page = { ...fresh(), merged: null, merges: 0, seen: false };
+  let last = 0;
+  const frame = (now) => {
+    if (last) {
+      page.frames += 1;
+      page.gap = Math.max(page.gap, now - last);
+    }
+    last = now;
+    frameId = requestAnimationFrame(frame);
+  };
+  frameId = requestAnimationFrame(frame);
+  document.addEventListener("monitor:message", onMessage);
+  document.addEventListener("monitor:plot", onPlot);
+  try {
+    longTasks = new PerformanceObserver((list) => {
+      for (const task of list.getEntries()) {
+        page.blocked += 1;
+        page.longest = Math.max(page.longest, task.duration);
+      }
+    });
+    longTasks.observe({ type: "longtask" });
+  } catch {
+    longTasks = null; // not in this browser
+  }
+}
+
+function unwatchPage() {
+  cancelAnimationFrame(frameId);
+  document.removeEventListener("monitor:message", onMessage);
+  document.removeEventListener("monitor:plot", onPlot);
+  longTasks?.disconnect();
+  longTasks = null;
+  page = null;
+  feedGroups = [];
+  pageGroups = [];
+  showStats();
+}
+
+function onMessage({ detail }) {
+  if (!page) return;
+  page.messages += 1;
+  page.waited = Math.max(page.waited, detail.queued);
+  page.handled = Math.max(page.handled, detail.handled);
+  page.merged ??= detail.merged; // counted from when the view opened
+  page.merges = detail.merged - page.merged;
+}
+
+function onPlot({ detail }) {
+  if (!page) return;
+  page.plots += 1;
+  page.plotSlowest = Math.max(page.plotSlowest, detail.took);
+}
+
+function showPage() {
+  if (!page) return;
+  const was = page;
+  page = { ...fresh(), merged: was.merged, merges: was.merges, seen: true };
+  const slow = 100; // ms: a frame or a wait this long is noticeable
+  pageGroups = [
+    group("Page", [
+      ["frames", String(was.frames), "frames/s", was.frames < 24],
+      ["gap", ms(was.gap), "longest frame", was.gap > slow],
+      ...(longTasks
+        ? [
+            ["blocked", String(was.blocked), "long tasks", was.blocked > 0],
+            ["longest", was.blocked ? ms(was.longest) : "-", "longest task", was.longest > slow],
+          ]
+        : []),
+    ], "Measured while this view is open, which costs the page some frames itself"),
+  ];
+  if (was.messages) {
+    pageGroups.push(
+      group("Values", [
+        ["messages", String(was.messages), "messages/s", false],
+        ["waited", ms(was.waited), "longest wait", was.waited > slow],
+        ["handled", ms(was.handled), "longest apply", was.handled > slow],
+        ["merged", String(was.merges), "merged since open", false],
+      ]),
+    );
+  }
+  if (was.plots) {
+    pageGroups.push(
+      group("Plots", [
+        ["requests", String(was.plots), "requests/s", false],
+        ["slowest", ms(was.plotSlowest), "slowest", was.plotSlowest > 250],
+      ]),
+    );
+  }
+  showStats();
 }
 
 function ago(arrived) {

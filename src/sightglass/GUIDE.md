@@ -9,7 +9,7 @@ creates its display. Print this guide from any project with
 ## 1. Install
 
 ```bash
-pip install "sightglass[web]"     # add serial / zmq / ads / rest extras as needed, or [all]
+pip install "sightglass[web]"     # add serial / zmq / ads / rest / influxdb extras as needed, or [all]
 ```
 
 Python 3.11+. The package has no required dependencies; `[web]` adds
@@ -28,7 +28,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | A REST API that answers GET with JSON | `sightglass --rest http://host:8000/metrics` (repeat `--rest`; `--rest-interval`, `--rest-header 'X-Api-Key: ...'`), or `RestSource("http://host/metrics", interval=2)`; needs `[rest]` |
-| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (a REST API) and `[[panel]]` tables, no page to write; see the README |
+| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; see the README |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
 | Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 
@@ -234,8 +234,8 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | To show | Element | Update with |
 | --- | --- | --- |
 | a value or message | `TextElement(id, units="°C", format=TextFormat(precision=1))` | anything |
-| a trend | `Sparkline(id, points=60, scale=1 / 1024, units="KB/s")` | numbers |
-| a long trend of a fast value | `Sparkline(id, points=300, interval=1)`: one point a second | numbers |
+| a small line of recent values | `Sparkline(id, points=60, scale=1 / 1024, units="KB/s")` | numbers |
+| a longer line of a fast value | `Sparkline(id, points=300, interval=1)`: one point a second | numbers |
 | progress | `ProgressBar(id, total=100)` | a number |
 | a reading within limits | `RangeBar(id, min_value=0, max_value=100, units="mm")` | a number |
 | on/off | `IndicatorLamp(id)` | bool, 1/0, on/off |
@@ -246,7 +246,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 
 ## 5. A custom page
 
-For a branded or hardware-style panel, write plain HTML and bind elements by
+For a branded or hardware-style page, write plain HTML and bind elements by
 id; no JavaScript is needed. `sightglass --demo launch` runs a complete
 example (gauges, tanks, lamps, several feeds) whose source ships with the
 package: `python -c "import sightglass.launch as m; print(m.HERE)"` prints
@@ -255,7 +255,7 @@ displays, LEDs), and its `examples/README.md` has a runnable example of each
 route in this guide (one command each), plus a Docker deployment.
 
 ```html
-<link rel="stylesheet" href="/_sightglass/panel.css">
+<link rel="stylesheet" href="/_sightglass/instruments.css">
 <span data-bind="temperature"></span>
 <div class="led" data-bind="pump" data-mode="state"></div>
 <div data-bind="rate.values" data-mode="sparkline" style="height: 24px"></div>
@@ -296,9 +296,9 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
   `html[data-theme="terminal"]` using the `--crt-*` colours and fonts
   (`--crt-display-font` for a big clock-like display, at multiples of 11px;
   `--crt-readout-font` for readings, at multiples of 8px). The CRT effects
-  cover any such page; animate your panels with its `crt-draw` and
+  cover any such page; animate your boxes with its `crt-draw` and
   `crt-type` keyframes, only under `prefers-reduced-motion: no-preference`.
-- **Checking the ids:** press `` ` `` on the page for the signals panel: every
+- **Checking the ids:** press `` ` `` on the page for the signals view: every
   id the dashboard receives, its value as sent and its last minute. A
   `data-bind` that stays empty names an id that isn't in that list.
 - **In a terminal:** `TerminalDisplay(screen=fn)` draws your own layout:
@@ -343,7 +343,7 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
 4. Warnings (bad values, unknown ids with `strict=True`, a missing serial
    device, PLC variables left out) go to stderr; read them.
 5. Look at the page in a browser if you can: values change live and the
-   status says "Live". Press `` ` `` for the signals panel: every id received,
+   status says "Live". Press `` ` `` for the signals view: every id received,
    as sent, with a chart of its last minute.
 
 ## 8. Gotchas
