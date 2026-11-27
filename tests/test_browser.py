@@ -414,6 +414,24 @@ class Ticking:
             yield [{"speed": n}]
 
 
+async def test_signals_view_wraps_long_ids_on_a_phone_instead_of_clipping_them(
+    page, serve
+):
+    monitor = Monitor()
+    ids = [f"jobs.totals.count.{leaf}" for leaf in ("submitted", "done", "retried")]
+    monitor.update({i: 1 for i in ids})
+    await page.set_viewport_size({"width": 390, "height": 800})
+    await page.goto(serve(None, monitor))
+    await page.locator("[data-signals-open]").click()
+
+    names = page.locator("sightglass-signals tbody th")
+    await expect(names).to_have_count(3)
+    clipped = await names.evaluate_all(
+        "els => els.map(e => e.scrollWidth > e.clientWidth + 1)"
+    )
+    assert clipped == [False, False, False]
+
+
 async def test_signals_view_shows_how_fast_the_sources_poll(page, serve):
     monitor = Monitor()
     await page.goto(serve(None, monitor, sources=[Ticking()], debug=True))

@@ -18,6 +18,8 @@ SOURCE_KEYS = {
         "interval",
         "timeout",
         "accept",
+        "include",
+        "exclude",
         "headers",
     },
     "ads": {"file", "target", "variables", "types", "ip", "interval", "timeout"},
@@ -63,6 +65,12 @@ def _rest(table: dict[str, Any], where: str, base: Path) -> Source:
     accept = table.get("accept", [])
     if not isinstance(accept, list) or not all(isinstance(s, int) for s in accept):
         raise ValueError(f"accept in {where} must be a list of status codes")
+    patterns = {}
+    for name in ("include", "exclude"):
+        value = table.get(name, [])
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise ValueError(f"{name} in {where} must be a list of id patterns")
+        patterns[name] = tuple(value)
     headers = table.get("headers", {})
     if not isinstance(headers, dict) or not all(
         isinstance(v, str) for v in headers.values()
@@ -75,6 +83,8 @@ def _rest(table: dict[str, Any], where: str, base: Path) -> Source:
         key=str(table.get("key", "id")),
         interval=number(table, "interval", 1.0, where) if "interval" in table else None,
         accept=tuple(accept),
+        include=patterns["include"],
+        exclude=patterns["exclude"],
     )
     return RestSource(
         endpoint,

@@ -12,6 +12,7 @@ type = "rest"                                  # poll a JSON API with GET
 url = "${API_URL:-http://localhost:8000/api/readings}"
 prefix = "plant"                               # ids start "plant."
 select = "sensors"                             # start from this place in the JSON
+exclude = ["plant.*.firmware"]                 # id patterns to leave out (or include = [...])
 interval = 0.5                                 # seconds between polls
 
 [[panel]]                                      # a trend, a panel per name
@@ -183,7 +184,7 @@ every id they make. [Sources](sources.md) describes each kind in full.
 
 | `type` | Keys |
 | --- | --- |
-| `rest` | `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see [REST APIs](sources.md#rest-apis) |
+| `rest` | `url`, `prefix`, `select`, `key`, `include`, `exclude`, `interval`, `timeout`, `accept`, `headers`: see [REST APIs](sources.md#rest-apis) |
 | `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC: `write = true` on a variable is refused here (an interface file's marks are left unused) |
 | `zmq` | `endpoint`, `pattern` (`"sub"` or `"pull"`), `bind`, and a `decoder` |
 | `serial` | `port` (default `"auto"`), `baudrate`, and a `decoder` |

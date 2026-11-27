@@ -97,7 +97,7 @@ async def test_prefix_select_and_headers(api, consume):
 
 
 async def test_error_statuses_are_ignored_unless_accepted(api, consume, caplog):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.WARNING)  # the default level
     monitor = Monitor()
     consume(
         monitor,
@@ -112,9 +112,29 @@ async def test_error_statuses_are_ignored_unless_accepted(api, consume, caplog):
     assert "flaky.level" not in monitor
     api.state["up"] = True  # it recovers by itself
     await until(lambda: "flaky.level" in monitor)
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1 and "HTTP 500" in warnings[0].getMessage()
-    assert any("answering again" in r.getMessage() for r in caplog.records)
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2 and "HTTP 500" in warnings[0]
+    assert "answering again" in warnings[1]
+
+
+async def test_a_refused_status_warning_names_accept(api, consume, caplog):
+    caplog.set_level(logging.WARNING)
+    monitor = Monitor()
+    consume(monitor, RestSource(url(api, "/health"), interval=0.05))
+    await until(lambda: "accept = [503]" in caplog.text)
+    assert "its body was ignored" in caplog.text
+
+
+async def test_a_refused_connection_does_not_mention_ssl(consume, caplog):
+    caplog.set_level(logging.WARNING)
+    dead = TestServer(web.Application())
+    await dead.start_server()
+    dead_url = url(dead, "/metrics")
+    await dead.close()
+    consume(Monitor(), RestSource(dead_url, interval=0.05))
+    await until(lambda: "cannot connect to" in caplog.text, within=10)
+    assert "connection refused" in caplog.text
+    assert "ssl" not in caplog.text.lower()
 
 
 async def test_unreachable_and_non_json_replies_do_not_stop_the_source(
@@ -209,6 +229,38 @@ def test_extract_names_and_types():
         "b.0": None,
         "b.1": 1,
     }
+
+
+def test_include_and_exclude_filter_ids_of_a_nested_reply():
+    doc = {"a": {"x": 1, "y": {"z": 2}}, "b": {"x": 3}, "c": "t"}
+
+    def ids(**options):
+        return set(extract(doc, Endpoint("http://x", prefix="p", **options)))
+
+    assert ids(include=("p.a.*",)) == {"p.a.x", "p.a.y.z"}
+    assert ids(exclude=("p.*.x", "p.c")) == {"p.a.y.z"}
+    assert ids(include=("p.*",), exclude=("p.a.y.*",)) == {"p.a.x", "p.b.x", "p.c"}
+    assert ids(include=("p.a",)) == set()
+
+
+def test_a_list_named_by_key_makes_no_key_ids():
+    doc = {"w": [{"id": "w1", "n": 1}, {"id": 7, "n": 3}, {"n": 5, "id": ""}]}
+    assert extract(doc, Endpoint("http://x")) == {
+        "w.w1.n": 1,
+        "w.7.n": 3,
+        "w.2.n": 5,
+        "w.2.id": "",  # no usable key: named by position, nothing to leave out
+    }
+    assert "w.1.id" in extract(doc, Endpoint("http://x", key="n"))
+
+
+def test_config_include_and_exclude(tmp_path):
+    from sightglass.dashboard.sources import build
+
+    source = build({"url": "http://x", "exclude": ["a.*"]}, 0, tmp_path)
+    assert source.endpoints[0].exclude == ("a.*",)
+    with pytest.raises(ValueError, match="include in"):
+        build({"url": "http://x", "include": "a"}, 0, tmp_path)
 
 
 def test_validation():

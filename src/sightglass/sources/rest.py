@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator, Mapping
+import re
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import KW_ONLY, dataclass
+from functools import lru_cache
 from typing import Any
 
 import aiohttp
 
 from ..monitor import Update
-from ._poll import Failed, Feed, parse, poll, read_body
+from ._poll import Failed, Feed, describe, parse, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,12 @@ class Endpoint:
     ``key`` field, or by position if it has none: with ``key="id"``,
     ``{"sensors": [{"id": "s0", "rate": 30}]}`` gives ``sensors.s0.rate``.
 
+    A list's ``key`` field names its item, so it is left out of the ids (no
+    ``sensors.s0.id``). ``include`` and ``exclude`` are lists of id patterns
+    (``*`` stands for any characters), matched against the whole id, prefix
+    included: only ids that match an ``include`` (all, if there is none) and no
+    ``exclude`` are kept, so the rest never reach a page or ``max_elements``.
+
     ``interval`` overrides the source's, for a slow-changing endpoint. A reply
     with a status outside 2xx is ignored unless listed in ``accept``: a health
     check that answers 503 when something is down is still data.
@@ -40,6 +48,8 @@ class Endpoint:
     key: str = "id"
     interval: float | None = None
     accept: tuple[int, ...] = ()
+    include: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
 
 
 class RestSource:
@@ -128,10 +138,13 @@ class RestSource:
         try:
             async with session.get(endpoint.url) as response:
                 if not response.ok and response.status not in endpoint.accept:
-                    raise Failed(f"HTTP {response.status} {response.reason}")
+                    raise Failed(
+                        f"HTTP {response.status} {response.reason}; its body was "
+                        f"ignored (accept = [{response.status}] shows it)"
+                    )
                 body = await read_body(response, self.max_bytes)
         except (aiohttp.ClientError, TimeoutError) as error:
-            raise Failed(str(error) or type(error).__name__) from None
+            raise Failed(describe(error)) from None
         return await parse(len(body), _document, body, endpoint)
 
     async def snapshot(self) -> Update:
@@ -176,8 +189,33 @@ def extract(document: Any, endpoint: Endpoint) -> Update:
         else:
             raise Failed(f"no {endpoint.select!r} in the reply")
     values: dict[str, Any] = {}
-    _flatten(document, endpoint.prefix, endpoint.key, values)
+    _flatten(document, endpoint.prefix, endpoint.key, values, drop_key=True)
+    if endpoint.include or endpoint.exclude:
+        keep = _matcher(endpoint.include, endpoint.exclude)
+        return {name: value for name, value in values.items() if keep(name)}
     return values
+
+
+@lru_cache(maxsize=64)
+def _matcher(
+    include: tuple[str, ...], exclude: tuple[str, ...]
+) -> Callable[[str], bool]:
+    def compile(patterns: tuple[str, ...]) -> re.Pattern[str] | None:
+        if not patterns:
+            return None
+        parts = (
+            "".join(".*" if c == "*" else re.escape(c) for c in p) for p in patterns
+        )
+        return re.compile("|".join(f"(?:{part})" for part in parts), re.DOTALL)
+
+    wanted, unwanted = compile(include), compile(exclude)
+
+    def keep(name: str) -> bool:
+        return (wanted is None or wanted.fullmatch(name) is not None) and (
+            unwanted is None or unwanted.fullmatch(name) is None
+        )
+
+    return keep
 
 
 _LEAVES = frozenset({str, int, float, bool})  # what a JSON document is made of
@@ -185,20 +223,27 @@ _SCALARS = (str, int, float, bool)
 _INDEX = tuple(map(str, range(256)))  # a list's positions as text, made once
 
 
-def _flatten(node: Any, path: str, key: str, out: dict[str, Any]) -> None:
+def _flatten(
+    node: Any, path: str, key: str, out: dict[str, Any], drop_key: bool = False
+) -> None:
     """Add the scalars under ``node`` to ``out``; ids are ``path`` plus names.
+    With ``drop_key``, an item of a list that is named by its ``key`` field has
+    no id for that field.
 
     Run on the event loop for every poll, so a document's own types (dict, list,
     str, int, float, bool) take the short way, and a leaf is never a call."""
     cls = type(node)
+    in_list = False
     if cls is dict:
         named = node.items()
     elif cls is list:
         named = zip(_names(node, key), node, strict=True)
+        in_list = drop_key
     elif isinstance(node, Mapping):
         named = ((str(name), value) for name, value in node.items())
     elif isinstance(node, list):
         named = zip(_names(node, key), node, strict=True)
+        in_list = drop_key
     else:
         if path and (node is None or isinstance(node, _SCALARS)):
             out[path] = node
@@ -210,8 +255,11 @@ def _flatten(node: Any, path: str, key: str, out: dict[str, Any]) -> None:
         cls = type(value)
         if cls in _LEAVES or value is None:
             out[prefix + name] = value
+        elif in_list and isinstance(value, Mapping) and _item_key(value, key):
+            rest = {k: v for k, v in value.items() if k != key}
+            _flatten(rest, prefix + name, key, out, drop_key)
         else:
-            _flatten(value, prefix + name, key, out)
+            _flatten(value, prefix + name, key, out, drop_key)
 
 
 def _names(items: list[Any], key: str) -> list[str]:
@@ -222,6 +270,11 @@ def _names(items: list[Any], key: str) -> list[str]:
         else (_INDEX[index] if index < 256 else str(index))
         for index, item in enumerate(items)
     ]
+
+
+def _item_key(item: Mapping[Any, Any], key: str) -> bool:
+    name = item.get(key)
+    return isinstance(name, str | int) and name != ""
 
 
 def _item_name(item: Any, key: str, index: int) -> str:
