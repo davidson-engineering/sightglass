@@ -10,6 +10,8 @@ jobs:
       # The oldest Python the package supports (requires-python >= 3.11).
       image: python:3.11-bookworm
     steps:
+      # actions/checkout is a JavaScript action; the Python image has no node.
+      - run: apt-get update && apt-get install -y --no-install-recommends nodejs
       - uses: actions/checkout@v4
       - run: pip install uv==0.13.10
       - run: make install
