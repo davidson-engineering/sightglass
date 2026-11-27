@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Actions > CI > Run workflow: every OS, for a branch that touches
+  # platform code before its release.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,7 +27,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Linux for every pull request and push to main. macOS and Windows
+        # minutes cost far more, so they run for a release's pull request
+        # (a release/* branch) and when run by hand.
+        os: >-
+          ${{ fromJSON(
+            (startsWith(github.head_ref, 'release/')
+              || github.event_name == 'workflow_dispatch')
+            && '["ubuntu-latest", "macos-latest", "windows-latest"]'
+            || '["ubuntu-latest"]'
+          ) }}
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
