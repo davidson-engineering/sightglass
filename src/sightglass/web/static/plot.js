@@ -241,7 +241,7 @@ function draw(plot) {
   g.moveTo(0, lines + 0.5);
   g.lineTo(width, lines + 0.5);
   g.stroke();
-  const ticks = heat ? null : valueTicks(low, high, pad, lines, parseFloat(style.fontSize));
+  const ticks = heat ? null : valueTicks(low, high, lines, parseFloat(style.fontSize));
   if (ticks) {
     g.globalAlpha = 0.12;
     g.beginPath();
@@ -301,7 +301,8 @@ function draw(plot) {
   g.restore();
 
   // Over the lines, outlined in the page's background so no line hides them:
-  // the value labels at the left, then the legend at the top right.
+  // the value labels at the left, each on a box of the background too, since
+  // a crowd of lines would show through an outline; then the legend.
   const size = parseFloat(style.fontSize);
   g.lineWidth = Math.max(size / 4, 3);
   g.strokeStyle = background(el);
@@ -312,6 +313,11 @@ function draw(plot) {
   for (const tick of ticks.values) {
     const text = ticks.label(tick, units);
     const at = Math.min(Math.max(y(tick), size * 0.6), lines - size * 0.6);
+    g.fillStyle = g.strokeStyle;
+    g.globalAlpha = 0.85;
+    g.fillRect(0, at - size * 0.6, g.measureText(text).width + 6, size * 1.2);
+    g.globalAlpha = 1;
+    g.fillStyle = style.color;
     g.strokeText(text, 3, at);
     g.fillText(text, 3, at);
   }
@@ -319,15 +325,17 @@ function draw(plot) {
   else delete el.dataset.plotLegend;
 }
 
-// Round values for the value axis, about TICK_ROOM lines of text apart, all
-// written with the same decimals: [1.5, 2.0, 2.5], or [50M, 100M].
-function valueTicks(low, high, pad, lines, size) {
+// Round values for the value axis, about TICK_ROOM lines of text apart and
+// within the values in view, all written with the same decimals:
+// [1.5, 2.0, 2.5], or [50M, 100M].
+function valueTicks(low, high, lines, size) {
   const wanted = Math.max(Math.floor(lines / (size * TICK_ROOM)), 2);
   const raw = (high - low) / wanted;
   const power = 10 ** Math.floor(Math.log10(raw));
   const step = STEPS.map((s) => s * power).find((s) => s >= raw * (1 - 1e-9));
   const values = [];
-  for (let k = Math.ceil((low - pad) / step); k * step <= high + pad; k++) {
+  const near = step * 1e-9; // a tick at the lowest or highest value counts
+  for (let k = Math.ceil((low - near) / step); k * step <= high + near; k++) {
     values.push(Math.abs(k) < 1e-9 ? 0 : k * step);
   }
   const biggest = Math.max(...values.map(Math.abs));
