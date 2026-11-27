@@ -171,3 +171,4 @@ cython_debug/
 !.env
 !.github
 !.coveragerc
+!.forge-workflows.yml

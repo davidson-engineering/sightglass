@@ -1,0 +1,11 @@
+# How the forge skills work in this repository (forge/README.md in the forge-workflows plugin).
+platform: forgejo
+bot:
+  login: claude-bot
+  credential: keychain item forgejo-mcp, stored with make secrets in claude-code-governance
+autonomy: file
+triage:
+  trusted: [claude-bot, matthew]
+format: structured
+labels:
+  kind: { bug: bug, feature: enhancement, docs: documentation, security: security }
