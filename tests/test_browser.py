@@ -183,6 +183,34 @@ async def test_stale_after_holds_while_the_page_is_disconnected(page, serve):
     await expect(wind).not_to_have_attribute("data-stale", "true")
 
 
+@pytest.mark.parametrize("theme", ["classic", "terminal"])
+async def test_generic_page_gives_a_log_the_full_card_width(page, serve, theme):
+    monitor = Monitor()
+    monitor.add(LogMonitor("events", lines=12, label="Events"))
+    await page.set_viewport_size({"width": 1280, "height": 800})
+    await page.goto(serve(None, monitor, theme=theme))
+    line = "09:50:05 WARNING job 1258 failed (upstream timed out), retry " + "1" * 9
+    assert len(line) == 70
+    for _ in range(12):
+        monitor.set("events", line)
+    row = page.locator(".row", has_text="Events")
+    await expect(row.locator('[data-mode="log"] > *')).to_have_count(12)
+    box = await row.evaluate(
+        """row => {
+            const log = row.querySelector('[data-mode="log"]');
+            const card = row.closest('section').getBoundingClientRect();
+            const label = row.querySelector('.label').getBoundingClientRect();
+            const box = log.getBoundingClientRect();
+            const lines = [...log.children].map(l => l.getBoundingClientRect().height);
+            return {log: box.width, card: card.width, above: label.bottom <= box.top,
+                    tall: Math.max(...lines), small: Math.min(...lines)};
+        }"""
+    )
+    assert box["above"]
+    assert box["log"] > box["card"] - 40  # the card's padding only
+    assert box["tall"] - box["small"] < 1  # no line wrapped onto a second row
+
+
 async def test_themes_switch_and_are_remembered(page, serve):
     monitor = Monitor()
     body = (
