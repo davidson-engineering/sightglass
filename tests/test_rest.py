@@ -211,6 +211,38 @@ def test_extract_names_and_types():
     }
 
 
+def test_include_and_exclude_filter_ids_of_a_nested_reply():
+    doc = {"a": {"x": 1, "y": {"z": 2}}, "b": {"x": 3}, "c": "t"}
+
+    def ids(**options):
+        return set(extract(doc, Endpoint("http://x", prefix="p", **options)))
+
+    assert ids(include=("p.a.*",)) == {"p.a.x", "p.a.y.z"}
+    assert ids(exclude=("p.*.x", "p.c")) == {"p.a.y.z"}
+    assert ids(include=("p.*",), exclude=("p.a.y.*",)) == {"p.a.x", "p.b.x", "p.c"}
+    assert ids(include=("p.a",)) == set()
+
+
+def test_a_list_named_by_key_makes_no_key_ids():
+    doc = {"w": [{"id": "w1", "n": 1}, {"id": 7, "n": 3}, {"n": 5, "id": ""}]}
+    assert extract(doc, Endpoint("http://x")) == {
+        "w.w1.n": 1,
+        "w.7.n": 3,
+        "w.2.n": 5,
+        "w.2.id": "",  # no usable key: named by position, nothing to leave out
+    }
+    assert "w.1.id" in extract(doc, Endpoint("http://x", key="n"))
+
+
+def test_config_include_and_exclude(tmp_path):
+    from sightglass.dashboard.sources import build
+
+    source = build({"url": "http://x", "exclude": ["a.*"]}, 0, tmp_path)
+    assert source.endpoints[0].exclude == ("a.*",)
+    with pytest.raises(ValueError, match="include in"):
+        build({"url": "http://x", "include": "a"}, 0, tmp_path)
+
+
 def test_validation():
     with pytest.raises(ValueError, match="at least one"):
         RestSource()
