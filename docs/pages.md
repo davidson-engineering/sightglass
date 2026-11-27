@@ -153,6 +153,26 @@ its highest value. While it can't get points, the element has
 `data-plot-error` with the reason, for example a dashboard without
 `--history`.
 
+- **Units and scale:** history keeps values as sent, so an element's `scale`
+  and `units` don't reach a plot. Give the plot its own:
+  `data-plot-units="MB"` after each value label, and `data-plot-scale` to
+  multiply the values first (`0.00000095367431640625` turns bytes into MB).
+- **The value axis** is labelled at round values, about three lines of text
+  apart, all with the same decimals. A value of 10,000 or more is shortened
+  with k, M or G (`200M`, or `200 MB` with units `B`).
+- **Colours:** two to eight ids are drawn each in its own colour, with a
+  legend at the top right naming them, less the part their names share
+  (`jobs.queue jobs.p95` gives `queue` and `p95`). The colours suit a light
+  or a dark background, whichever the plot has. One id, or more than eight,
+  are drawn in the element's `color`, as one shape.
+- **One scale per plot:** ids plotted together share the value axis, so plot
+  values of different units, or of very different sizes, in plots of their
+  own.
+
+The element gets `data-plot-signals` (how many ids it draws),
+`data-plot-range` (the lowest and highest value in view), `data-plot-ticks`
+(the value labels) and, with colours, `data-plot-legend`.
+
 `sightglass --demo plot --open` plots 100 waveforms sampled 20 times a second,
 each with an occasional spike one sample long. The last minute shows every
 sample. The last 10 minutes shows several samples per point, and every spike
