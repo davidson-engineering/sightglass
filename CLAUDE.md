@@ -96,8 +96,11 @@ uv run --all-extras python docs/screenshot.py   # retake the README screenshots 
   PLC (memory, symbol table, symbol version) behind pyads' test server on
   127.0.0.1:48898, which must be free. They skip on Windows, where pyads
   needs TwinCAT's router.
-- Serial tests need pseudo-terminals and skip on Windows. CI runs Linux,
-  macOS and Windows on Python 3.11 to 3.14; check behaviour that differs
+- Serial tests need pseudo-terminals and skip on Windows. CI runs Python
+  3.11 to 3.14 on Linux for pull requests; macOS and Windows only for a
+  `release/...` branch's pull request or a manual run (Actions > CI > Run
+  workflow). A change to platform code (paths, processes, ctypes, signals)
+  needs that manual run before it merges. Check behaviour that differs
   between versions (e.g. `subprocess`, `asyncio`) on 3.11 too.
 - A bug fix starts with a test that fails without it.
 
