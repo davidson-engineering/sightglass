@@ -95,4 +95,4 @@ class Simulation:
 
 
 def source() -> SimulatedSource:
-    return SimulatedSource(Simulation(), rate=20)
+    return SimulatedSource(Simulation(), interval=0.05)

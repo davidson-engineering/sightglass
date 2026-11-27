@@ -99,11 +99,13 @@ def main() -> None:
     # Log to a file: anything printed to the terminal would be drawn over.
     logging.basicConfig(filename="terminal_axes.log", level=logging.INFO)
     if args.simulate:
-        feed = SimulatedSource(Simulator(), rate=30)
+        feed = SimulatedSource(Simulator(), interval=1 / 30)
     elif args.zmq:
         feed = ZmqSource(args.zmq)
     else:
-        feed = SerialSource(args.port, args.baudrate, decoder=BinaryFrameDecoder(NAMES))
+        feed = SerialSource(
+            args.port, baudrate=args.baudrate, decoder=BinaryFrameDecoder(NAMES)
+        )
     build_monitor().serve(sources=[feed], outputs=[TerminalDisplay()])
 
 

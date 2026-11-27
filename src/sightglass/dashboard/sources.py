@@ -21,8 +21,8 @@ SOURCE_KEYS = {
         "headers",
     },
     "ads": {"file", "target", "variables", "types", "ip", "interval", "timeout"},
-    "zmq": {"endpoint", "pattern", "bind", "decoder", "fields", "bytes"},
-    "serial": {"port", "baudrate", "decoder", "fields", "bytes"},
+    "zmq": {"endpoint", "pattern", "bind", "decoder", "fields", "names"},
+    "serial": {"port", "baudrate", "decoder", "fields", "names"},
     "influxdb": {
         "url",
         "org",
@@ -110,11 +110,11 @@ def _ads(table: dict[str, Any], where: str, base: Path) -> Source:
         raise ValueError(
             f'variables in {where} must be names (["MAIN.*"]) or a table of types'
         )
-    for key, argument in (("types", "types"), ("ip", "ip_address")):
+    for key in ("types", "ip"):
         if key in table:
             if not isinstance(table[key], str):
                 raise ValueError(f"{key} in {where} must be text")
-            options[argument] = table[key]
+            options[key] = table[key]
     return AdsSource(target, variables, **options)
 
 
@@ -126,7 +126,7 @@ def _decoder(table: dict[str, Any], where: str) -> Decoder:
         raise ValueError(
             f"decoder in {where} must be {' or '.join(DECODERS)}, not {kind!r}"
         )
-    for key, wanted in (("fields", "csv"), ("bytes", "binary")):
+    for key, wanted in (("fields", "csv"), ("names", "binary")):
         if key in table and kind != wanted:
             raise ValueError(f'{key} in {where} goes with decoder = "{wanted}"')
     if kind == "csv":
@@ -139,14 +139,14 @@ def _decoder(table: dict[str, Any], where: str) -> Decoder:
             raise ValueError(f"{where}: decoder csv needs fields, a list of ids")
         return CsvDecoder(fields)
     if kind == "binary":
-        names = table.get("bytes")
+        names = table.get("names")
         if (
             not isinstance(names, dict)
             or not names
             or not all(k.isdigit() and isinstance(v, str) for k, v in names.items())
         ):
             raise ValueError(
-                f'{where}: decoder binary needs bytes, a table like {{ "1" = "X" }}'
+                f'{where}: decoder binary needs names, a table like {{ "1" = "X" }}'
             )
         return BinaryFrameDecoder({int(byte): name for byte, name in names.items()})
     return JsonDecoder() if kind == "json" else KeyValueDecoder()
@@ -176,7 +176,7 @@ def _serial(table: dict[str, Any], where: str, base: Path) -> Source:
     if not isinstance(port, str):
         raise ValueError(f"port in {where} must be text")
     baudrate = int(number(table, "baudrate", 115200, where))
-    return SerialSource(port, baudrate, decoder=_decoder(table, where))
+    return SerialSource(port, baudrate=baudrate, decoder=_decoder(table, where))
 
 
 def _influxdb(table: dict[str, Any], where: str, base: Path) -> Source:

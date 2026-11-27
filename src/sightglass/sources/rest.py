@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from typing import Any
 
 import aiohttp
@@ -34,6 +34,7 @@ class Endpoint:
     """
 
     url: str
+    _: KW_ONLY
     prefix: str = ""
     select: str = ""
     key: str = "id"

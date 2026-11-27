@@ -159,7 +159,9 @@ reconnects after it is unplugged. In Python:
 from sightglass import CsvDecoder, Monitor, SerialSource
 
 monitor = Monitor()
-device = SerialSource("auto", 115200, decoder=CsvDecoder(["temperature", "humidity"]))
+device = SerialSource(
+    "auto", baudrate=115200, decoder=CsvDecoder(["temperature", "humidity"])
+)
 monitor.serve(sources=[device])  # runs until Ctrl+C
 ```
 
@@ -355,5 +357,5 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
 - In asyncio code use `await monitor.run(...)`; `start()` runs its own loop in
   a thread and `serve()` blocks.
 - In tests: `WebDashboard(port=0, announce=False)`, `monitor.start(...)`,
-  `web.url`, then `monitor.stop()`. `SimulatedSource(fn, rate)` generates
+  `web.url`, then `monitor.stop()`. `SimulatedSource(fn, interval=0.05)` generates
   data without hardware.

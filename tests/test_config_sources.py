@@ -49,7 +49,7 @@ ip = "10.0.0.5"
 """,
     )
     assert isinstance(source, AdsSource)
-    assert (source.target, source.interval, source.ip_address) == (
+    assert (source.target, source.interval, source.ip) == (
         "5.12.34.56.1.1:851",
         0.05,
         "10.0.0.5",
@@ -80,7 +80,7 @@ def test_an_ads_source_can_use_an_interface_file_beside_the_config(tmp_path):
         ('type = "zmq"\npattern = "pub"', "pattern .* sub or pull"),
         ('type = "zmq"\nfields = ["a"]', 'goes with decoder = "csv"'),
         ('type = "zmq"\ndecoder = "csv"', "needs fields"),
-        ('type = "serial"\ndecoder = "binary"', "needs bytes"),
+        ('type = "serial"\ndecoder = "binary"', "needs names"),
         ('type = "serial"\ndecoder = "xml"', "decoder .* must be"),
         ('type = "serial"\nbaudrate = 0', "baudrate"),
         ('type = "influxdb"', "needs a url"),
@@ -114,7 +114,7 @@ def test_zmq_and_serial_sources_take_a_decoder(tmp_path):
         'type = "zmq"\nendpoint = "tcp://127.0.0.1:5599"\npattern = "pull"\n'
         'decoder = "json"\n\n[[source]]\ntype = "serial"\nport = "COM3"\n'
         'baudrate = 9600\ndecoder = "csv"\nfields = ["a", "b"]\n\n[[source]]\n'
-        'type = "serial"\ndecoder = "binary"\nbytes = { "1" = "X", "2" = "Y" }',
+        'type = "serial"\ndecoder = "binary"\nnames = { "1" = "X", "2" = "Y" }',
     )
     assert isinstance(zmq, ZmqSource) and zmq.pattern == "pull" and zmq.bind
     assert isinstance(zmq.decoder, JsonDecoder)

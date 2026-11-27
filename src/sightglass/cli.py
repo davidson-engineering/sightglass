@@ -87,7 +87,7 @@ def parser() -> argparse.ArgumentParser:
     serial_format = inputs.add_mutually_exclusive_group()
     serial_format.add_argument(
         "--csv",
-        metavar="NAMES",
+        metavar="FIELDS",
         help="device sends comma-separated values, in this order",
     )
     serial_format.add_argument(
@@ -95,8 +95,9 @@ def parser() -> argparse.ArgumentParser:
     )
     serial_format.add_argument(
         "--binary",
-        metavar="MAP",
-        help="device sends binary frames; MAP names the id bytes, e.g. 1=X,10=velocity",
+        metavar="NAMES",
+        help="device sends binary frames; NAMES gives each id byte's name, "
+        "e.g. 1=X,10=velocity",
     )
     inputs.add_argument("--zmq", metavar="ENDPOINT", help="receive ZeroMQ messages")
     inputs.add_argument(
@@ -239,7 +240,9 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
         from . import SerialSource
 
         sources.append(
-            SerialSource(args.serial, args.baudrate, decoder=serial_decoder(args))
+            SerialSource(
+                args.serial, baudrate=args.baudrate, decoder=serial_decoder(args)
+            )
         )
     elif args.csv or args.json or args.binary:
         raise ValueError("--csv, --json and --binary describe a --serial device")

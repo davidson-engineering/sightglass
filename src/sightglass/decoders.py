@@ -135,19 +135,23 @@ class CsvDecoder(LineDecoder):
     """
 
     def __init__(
-        self, keys: Sequence[str], separator: str = ",", encoding: str = "utf-8"
+        self,
+        fields: Sequence[str],
+        *,
+        separator: str = ",",
+        encoding: str = "utf-8",
     ) -> None:
         super().__init__(encoding)
-        self.keys = list(keys)
+        self.fields = list(fields)
         self.separator = separator
 
     def decode_line(self, line: str) -> dict[str, Any]:
-        fields = line.split(self.separator)
-        if len(fields) != len(self.keys):
-            raise DecodeError(f"expected {len(self.keys)} fields, got {len(fields)}")
+        values = line.split(self.separator)
+        if len(values) != len(self.fields):
+            raise DecodeError(f"expected {len(self.fields)} fields, got {len(values)}")
         return {
-            key: value.strip()
-            for key, value in zip(self.keys, fields, strict=True)
+            id: value.strip()
+            for id, value in zip(self.fields, values, strict=True)
             if value.strip()
         }
 

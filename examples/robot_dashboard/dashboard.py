@@ -112,9 +112,11 @@ def main() -> None:
         level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
     )
     if args.simulate:
-        feed = SimulatedSource(simulate, rate=20)
+        feed = SimulatedSource(simulate, interval=0.05)
     else:
-        feed = SerialSource(args.port, args.baudrate, decoder=CsvDecoder(FIELDS))
+        feed = SerialSource(
+            args.port, baudrate=args.baudrate, decoder=CsvDecoder(FIELDS)
+        )
     dashboard = WebDashboard(
         HERE / "dashboard.html",
         static_dir=HERE / "static",

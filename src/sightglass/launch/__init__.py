@@ -131,7 +131,9 @@ def run(
             TerminalDisplay(screen=lambda monitor, w, h: screen(monitor, w, h, web.url))
         )
     monitor = build_monitor()
-    monitor.start(sources=[SimulatedSource(Vehicle(started), rate=10)], outputs=outputs)
+    monitor.start(
+        sources=[SimulatedSource(Vehicle(started), interval=0.1)], outputs=outputs
+    )
 
     # Anything the feeders print would land on the terminal display: log it.
     log = "sightglass.log" if terminal else None

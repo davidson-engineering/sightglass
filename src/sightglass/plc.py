@@ -819,7 +819,7 @@ def _line_of_types(text: str) -> int:
 
 def read_interface(path: str | Path) -> dict[str, Any]:
     """Read an interface file (TOML) into keyword arguments for a PLC source:
-    ``target``, ``variables`` and, if given, ``types``, ``ip_address`` and
+    ``target``, ``variables`` and, if given, ``types``, ``ip`` and
     ``interval``. Raises ValueError, naming the file, for anything wrong."""
     path = Path(path)
     try:
@@ -840,7 +840,7 @@ def read_interface(path: str | Path) -> dict[str, Any]:
     settings: dict[str, Any] = {}
     for key, kind, argument in (
         ("target", str, "target"),
-        ("ip", str, "ip_address"),
+        ("ip", str, "ip"),
         ("types", str, "types"),
         ("interval", (int, float), "interval"),
     ):

@@ -41,7 +41,7 @@ def test_build_serial_csv(monkeypatch):
         args("--serial", "auto", "--csv", "a, b", "--port", "9")
     )
     (serial,) = sources
-    assert isinstance(serial, SerialSource) and serial.decoder.keys == ["a", "b"]
+    assert isinstance(serial, SerialSource) and serial.decoder.fields == ["a", "b"]
     (web,) = outputs
     assert isinstance(web, WebDashboard) and web.port == 9
 

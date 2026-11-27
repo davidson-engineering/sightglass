@@ -259,7 +259,7 @@ async def test_add_from_another_thread_waits_and_reports_errors():
 
 async def test_run_feeds_sources_until_cancelled():
     monitor = make_monitor()
-    source = SimulatedSource(lambda t: {"speed": "tick"}, rate=100)
+    source = SimulatedSource(lambda t: {"speed": "tick"}, interval=0.01)
     version = monitor.version
     task = asyncio.create_task(monitor.run(sources=[source]))
     await asyncio.wait_for(monitor.wait_for_change(version), 1)
