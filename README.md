@@ -122,8 +122,8 @@ log.info("all jobs run: %d done, %d failed", done, failed)
 ```
 
 - `ProcessSource` sends `process.cpu`, `process.rss` (shown in MB),
-  `process.threads`, `process.fds` and `process.uptime`. It needs nothing
-  installed, and uses psutil if it is.
+  `process.threads`, `process.fds` (open files, not on Windows) and
+  `process.uptime`. It needs nothing installed, and uses psutil if it is.
 - `LogHandler` puts every record that reaches the logger in a `LogMonitor`,
   warnings and errors in colour. Records sightglass logs itself, such as a
   rejected value, arrive there too.
