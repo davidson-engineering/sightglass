@@ -343,27 +343,21 @@ def config_build(
             "command line only where it runs: --host, --port, --token, --open, "
             "--debug)"
         )
-    from . import WebDashboard
-    from .history import History
-
     dashboard = load(args.config)
-    monitor = Monitor(max_elements=dashboard.max_elements)
-    monitor.add(*dashboard.elements())  # e.g. a number shown to fixed decimals
-    # Only what the panels plot: the rest of a source's ids would cost memory
-    # and time (8 bytes a slot each) for plots that never draw them.
-    monitor.history = History(dashboard.history, only=dashboard.plotted())
-    web = WebDashboard(
-        html=dashboard.page(),
+    if not dashboard.sources:
+        print(
+            f"sightglass: {args.config} has no [[source]]; send values with "
+            "POST /update, Client or curl",
+            file=sys.stderr,
+        )
+    web = dashboard.web(
         host=args.host,
         port=args.port,
-        title=dashboard.title,
-        theme=dashboard.theme,
         token=args.token,
-        stale_after=dashboard.stale_after,
         debug=args.debug,
         open_browser=args.open,
     )
-    return monitor, dashboard.sources, [web]
+    return dashboard.monitor(), dashboard.sources, [web]
 
 
 def launch(args: argparse.Namespace) -> None:

@@ -25,8 +25,16 @@ time (a primary plot and, optionally, a secondary one), ``value`` shows one
 id as large text, ``lamp`` as a light and ``gauge`` as a bar. A **section** is
 a titled group of panels (``[[section]]`` with
 ``[[section.panel]]`` inside); panels written at the top level are one
-untitled section. See :func:`load` for every key. Standard library only; the
-sources it builds need their extras (``rest`` needs aiohttp).
+untitled section. A file with no ``[[source]]`` is fed like any dashboard,
+by ``POST /update``, :class:`~sightglass.Client` or ``monitor.set()``.
+
+The file says what the dashboard is; whoever runs it says where::
+
+    monitor = load("dashboard.toml").start(port=8080)
+    monitor.set("app.cpu", 12.5)
+
+See :func:`load` for every key. Standard library only; the sources it builds
+need their extras (``rest`` needs aiohttp), and serving it needs ``web``.
 """
 
 from __future__ import annotations
@@ -36,14 +44,17 @@ import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..elements import Element
-from ..monitor import MAX_ELEMENTS, THEMES, TITLE, Source
+from ..monitor import MAX_ELEMENTS, THEMES, TITLE, Monitor, Source
 from . import sources
 from ._config import number, only, tables
 from .page import render
 from .panels import Panel, build
+
+if TYPE_CHECKING:
+    from ..web import WebDashboard
 
 __all__ = ["Dashboard", "Panel", "Section", "load", "render"]
 
@@ -112,6 +123,53 @@ class Dashboard:
                 found.setdefault(element.id, element)
         return list(found.values())
 
+    def monitor(self) -> Monitor:
+        """A monitor as the file describes: its elements, its limit, and
+        history for the ids its panels plot (only those: the rest of a
+        source's ids would cost 8 bytes a slot each for plots that never draw
+        them)."""
+        from ..history import History
+
+        monitor = Monitor(max_elements=self.max_elements)
+        monitor.add(*self.elements())  # e.g. a number shown to fixed decimals
+        monitor.history = History(self.history, only=self.plotted())
+        return monitor
+
+    def web(
+        self,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 8080,
+        token: str | None = None,
+        debug: bool = False,
+        open_browser: bool = False,
+        announce: bool = True,
+    ) -> WebDashboard:
+        """The dashboard's page, served where the caller says. Its title,
+        theme and ``stale_after`` come from the file."""
+        from ..web import WebDashboard
+
+        return WebDashboard(
+            html=self.page(),
+            host=host,
+            port=port,
+            title=self.title,
+            theme=self.theme,
+            token=token,
+            stale_after=self.stale_after,
+            debug=debug,
+            open_browser=open_browser,
+            announce=announce,
+        )
+
+    def start(self, **where: Any) -> Monitor:
+        """Serve the dashboard in the background, reading its sources, and
+        return its monitor, for ``set()`` and ``stop()``. ``where`` is
+        :meth:`web`'s: ``host``, ``port``, ``token`` and so on."""
+        monitor = self.monitor()
+        monitor.start(sources=self.sources, outputs=[self.web(**where)])
+        return monitor
+
 
 def load(path: str | Path) -> Dashboard:
     """Read a config file. Raises :class:`ValueError` with a one-line reason for
@@ -178,8 +236,6 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
     built = [
         sources.build(table, i, base) for i, table in enumerate(tables(data, "source"))
     ]
-    if not built:
-        raise ValueError("needs at least one [[source]]")
     longest = max((plot.seconds for p in panels for plot in p.plots), default=0)
     history = number(data, "history", longest + 60, "the config")
     if history < longest:
