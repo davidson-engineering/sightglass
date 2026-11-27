@@ -55,26 +55,8 @@ for i in range(1, 101):
 `set()` returns at once and is safe from any thread. Each new id becomes an
 element: a lamp for `True`/`False`, text otherwise. Dotted ids like
 `"job.rate"` are grouped under `job`. The dashboard stops when your program
-exits.
-
-To watch the program's own CPU, memory, threads and uptime as well, start it
-with a `ProcessSource`:
-
-```python
-from sightglass import ProcessSource, start
-
-monitor = start(sources=[ProcessSource()])  # samples once a second
-```
-
-To show your program's log records too, with warnings and errors in colour:
-
-```python
-import logging
-
-from sightglass import LogHandler
-
-logging.getLogger().addHandler(LogHandler(monitor))  # the last 20, as "log"
-```
+exits. To show the program's own CPU, memory and log as well, see
+[Monitor your own Python app](#monitor-your-own-python-app).
 
 ### Without writing code
 
@@ -109,6 +91,45 @@ dashboard.update({"rate": 18.6, "status": "running"})
 Updates are sent in order in the background, retried until the dashboard is
 up, and flushed when your program exits. Pass `token=` if the dashboard has
 one.
+
+## Monitor your own Python app
+
+Its resource use, its counters and its log, on one page:
+
+```python
+import logging
+import time
+
+from sightglass import LogHandler, ProcessSource, start
+
+monitor = start(sources=[ProcessSource()])  # CPU, memory, threads, once a second
+logging.basicConfig(level=logging.INFO)
+logging.getLogger().addHandler(LogHandler(monitor))  # the last 20 records, as "log"
+log = logging.getLogger("jobs")
+
+done = failed = 0
+for job in range(1, 51):
+    try:
+        time.sleep(0.1)  # your work
+        if job % 9 == 0:
+            raise ValueError("bad input")
+        done += 1
+    except ValueError as error:
+        failed += 1
+        log.warning("job %d failed: %s", job, error)
+    monitor.update({"jobs.done": done, "jobs.failed": failed, "jobs.left": 50 - job})
+log.info("all jobs run: %d done, %d failed", done, failed)
+```
+
+- `ProcessSource` sends `process.cpu`, `process.rss` (shown in MB),
+  `process.threads`, `process.fds` (open files, not on Windows) and
+  `process.uptime`. It needs nothing installed, and uses psutil if it is.
+- `LogHandler` puts every record that reaches the logger in a `LogMonitor`,
+  warnings and errors in colour. Records sightglass logs itself, such as a
+  rejected value, arrive there too.
+- `update()` sets several ids in one call. It is the cheaper way to send
+  several at once: one call of 100 ids cost 0.45 µs a value on a laptop,
+  against 3.7 µs for each `set()`.
 
 ## Connect a device, PLC or API
 
@@ -161,10 +182,22 @@ A monitor runs in the background (`monitor.start()`), in the foreground until
 Ctrl+C (`monitor.serve()`), or inside your asyncio program
 (`await monitor.run(...)`).
 
+## Pick a page
+
+| | Generic page | Config file | Your own page |
+| --- | --- | --- | --- |
+| What you write | nothing | a TOML file of panels | HTML and CSS |
+| Layout | one column, grouped by dotted id | sections of panels | anything |
+| Values over time | a `Sparkline` you declare (the last 60 values) | `trend` panels: plots over minutes | `data-plot`: plots over minutes |
+| Fed from your own program | `start()` | [`load("dashboard.toml").start()`](https://github.com/davidson-engineering/sightglass/blob/main/docs/config.md#feed-it-from-your-own-program) | `start(outputs=[WebDashboard("page.html")])` |
+| Fed by devices and APIs | `sources=[...]` | `[[source]]` tables | `sources=[...]` |
+
+Every page also takes `POST /update` from curl and `Client`, and has the
+signals view (`` ` ``).
+
 ## Build your own page
 
-Write plain HTML and bind elements by id. Serve it with
-`WebDashboard("page.html")`:
+Write plain HTML and bind elements by id:
 
 ```html
 <link rel="stylesheet" href="/_sightglass/instruments.css">
@@ -174,6 +207,19 @@ Write plain HTML and bind elements by id. Serve it with
 <div data-plot="wave.*" data-seconds="60" style="height: 300px"></div>
 <script src="/_sightglass/sightglass.js"></script>
 ```
+
+Then serve it:
+
+```python
+from sightglass import WebDashboard, start
+
+monitor = start(outputs=[WebDashboard("page.html")], history=600)
+```
+
+`history=600` keeps 10 minutes for `data-plot`. History keeps values as
+sent, so an element's `scale` and `units` don't reach a plot: give the plot
+its own, such as `data-plot-units="MB"` and
+`data-plot-scale="0.00000095367431640625"` for bytes.
 
 [Pages](https://github.com/davidson-engineering/sightglass/blob/main/docs/pages.md)
 covers every binding, the signals view, plots against time (`--history`), the

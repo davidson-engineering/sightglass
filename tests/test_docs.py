@@ -2,6 +2,7 @@
 
 import ast
 import importlib
+import json
 import re
 import subprocess
 import sys
@@ -157,3 +158,60 @@ def test_links_to_the_docs_reach_a_file_and_heading_that_exist(name):
     headings = {anchor(h) for h in re.findall(r"^#+ (.+)$", text, re.M)}
     for fragment in re.findall(r"\]\(#([^)]+)\)", text):
         assert fragment in headings, f"{name}: #{fragment}"
+
+
+def snippet_under(path: Path, heading: str) -> str:
+    """The first Python block after ``heading``."""
+    text = path.read_text("utf-8")
+    after = text[text.index(f"\n{heading}\n") :]
+    return re.search(r"```python\n(.*?)```", after, re.S).group(1)
+
+
+# Runs a snippet as written, except that its dashboard takes any free port
+# (8080 may be in use) and its sleeps are ten times shorter.
+RUN_SNIPPET = """
+import json, sys, time
+
+import sightglass
+from sightglass import WebDashboard
+
+real_start, real_sleep = sightglass.start, time.sleep
+sightglass.start = lambda **options: real_start(
+    outputs=[WebDashboard(port=0, announce=False)], **options
+)
+time.sleep = lambda seconds: real_sleep(seconds / 10)
+namespace = {}
+exec(sys.stdin.read(), namespace)
+monitor = namespace["monitor"]
+real_sleep(0.2)  # the last values reach the monitor's thread
+print(json.dumps(monitor.snapshot()))
+monitor.stop()
+"""
+
+
+@pytest.mark.parametrize(
+    ("name", "heading"),
+    [
+        ("README.md", "## Monitor your own Python app"),
+        ("GUIDE.md", "### Monitoring a Python app itself"),
+    ],
+)
+def test_the_monitor_your_own_app_recipe_runs(name, heading):
+    result = subprocess.run(
+        [sys.executable, "-c", RUN_SNIPPET],
+        input=snippet_under(DOCS[name], heading),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    shown = json.loads(result.stdout)
+    assert shown["process.rss"]["text"].endswith(" MB")
+    assert shown["process.threads"]
+    assert "WARNING job" in shown["log"]  # through LogHandler
+    if name == "README.md":
+        assert shown["jobs.left"] == "0"
+        assert int(shown["jobs.done"]) + int(shown["jobs.failed"]) == 50
+        assert "INFO all jobs run" in shown["log"]
+    else:
+        assert shown["jobs.left"] == "7"

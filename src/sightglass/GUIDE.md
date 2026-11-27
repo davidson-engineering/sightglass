@@ -55,19 +55,48 @@ for i in range(1, 51):
 monitor.set("status", "done")
 ```
 
-- `set()` never blocks and is safe from any thread.
-- `start(sources=[ProcessSource()])` also shows the program's own CPU, memory
-  (MB), threads, open files and uptime, as `process.*` ids, once a second; no
-  other code, psutil optional.
+- `set()` never blocks and is safe from any thread. To send several ids at
+  once, `monitor.update({"a": 1, "b": 2})` is one call (about 0.45 µs a value
+  for 100 ids, against 3.7 µs for each `set()`).
 - `start()` raises `OSError` if the port is taken; pass
   `outputs=[WebDashboard(port=0)]` for any free port (the address is printed,
   and is `web.url` on the `WebDashboard` object).
 - When the program exits, open pages keep the final values, marked
   disconnected.
-- Log records too: `logging.getLogger().addHandler(LogHandler(monitor))`
-  shows the last 20 as `log`, warnings amber and errors red. `LogHandler`
-  also takes a `Client`, and an id: `LogHandler(monitor, "events",
-  level=logging.WARNING)`.
+
+### Monitoring a Python app itself
+
+Its resource use, its counters and its log, on one page:
+
+```python
+import logging
+
+from sightglass import LogHandler, ProcessSource, start
+
+monitor = start(sources=[ProcessSource()])  # process.cpu, .rss, .threads, ...
+logging.basicConfig(level=logging.INFO)
+logging.getLogger().addHandler(LogHandler(monitor))  # the last 20 records, as "log"
+log = logging.getLogger("jobs")
+
+monitor.update({"jobs.done": 41, "jobs.failed": 2, "jobs.left": 7})
+log.warning("job 42 failed")  # warnings amber, errors red
+```
+
+- `ProcessSource()` samples once a second: CPU (% of one core), memory
+  (`process.rss`, bytes, shown in MB), Python threads, open files, uptime and
+  garbage collector counts. No other code; psutil is used if installed, not
+  needed.
+- `LogHandler` also takes a `Client`, and an id and level:
+  `LogHandler(monitor, "events", level=logging.WARNING)`.
+- For plots over minutes rather than sparklines, use a config file of
+  `trend` panels or a page with `data-plot` (section 5); start with
+  `history=600`.
+
+| Page | What you write | Values over time | From your own program |
+| --- | --- | --- | --- |
+| generic | nothing | declared `Sparkline`s | `start()` |
+| config file | TOML panels | `trend` panels | `sightglass.dashboard.load("dashboard.toml").start()` |
+| your own | HTML, CSS | `data-plot` | `start(outputs=[WebDashboard("page.html")])` |
 
 ### Choosing how values look
 
