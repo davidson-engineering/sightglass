@@ -12,6 +12,7 @@ To add a new kind of element, subclass :class:`Element` and implement
 from __future__ import annotations
 
 import copy
+import re
 from collections import deque
 from collections.abc import Mapping, Sequence
 from datetime import datetime
@@ -433,8 +434,40 @@ class Table(Element):
         return {**super().describe(), "rows": self.rows, "columns": self.columns}
 
 
+# A log line's level: its first word, after the time if it starts with one,
+# in capitals as Python's logging and most loggers write it ("ERROR", or
+# "ERROR:"). sightglass.js marks lines with the same rule (data-mode="log").
+LEVEL = re.compile(
+    r"^(?:\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\s+)?"
+    r"(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b"
+)
+LEVELS = {
+    "DEBUG": "debug",
+    "INFO": "info",
+    "WARNING": "warning",
+    "WARN": "warning",
+    "ERROR": "error",
+    "CRITICAL": "error",
+    "FATAL": "error",
+}
+# How warnings and errors are drawn in the terminal; other lines stay plain.
+LEVEL_STYLES = {
+    "warning": Style(fg="yellow"),
+    "error": Style(fg="red", bold=True),
+}
+
+
+def level_of(line: str) -> str | None:
+    """``"debug"``, ``"info"``, ``"warning"`` or ``"error"`` for a log line
+    that starts with its level, else None."""
+    found = LEVEL.match(line)
+    return LEVELS[found.group(1)] if found else None
+
+
 class LogMonitor(Element):
-    """The most recent ``lines`` messages, newest last."""
+    """The most recent ``lines`` messages, newest last. A line that starts
+    with a level (``WARNING ...``, ``12:00:03 ERROR: ...``) is shown in that
+    level's colour; :class:`~sightglass.LogHandler` writes lines that way."""
 
     block = True
 
@@ -465,7 +498,12 @@ class LogMonitor(Element):
 
     def render(self, width: int) -> str:
         padded = [*self.entries, *[""] * (self.lines - len(self.entries))]
-        return "\n".join(fit(entry, width) for entry in padded)
+        return "\n".join(self._styled(fit(entry, width)) for entry in padded)
+
+    @staticmethod
+    def _styled(line: str) -> str:
+        style = LEVEL_STYLES.get(level_of(line) or "")
+        return style.apply(line) if style else line
 
 
 def parse_bool(value: Any) -> bool:

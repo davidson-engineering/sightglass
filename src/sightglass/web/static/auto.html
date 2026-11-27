@@ -17,6 +17,8 @@
       --line: #e3e6ea;
       --bar: #2f6fed;
       --led-off: #cfd3d8;
+      --warning: #9a6700;
+      --error: #c62828;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -28,6 +30,8 @@
         --line: #2c3034;
         --bar: #6ea0ff;
         --led-off: #3b3f44;
+        --warning: #f2b33d;
+        --error: #ff7b72;
       }
     }
 
@@ -94,7 +98,9 @@
     /* Long text (a process name, a path) ends in "..."; hover for all of it. */
     td[data-column]:not(.number) { max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     th:first-child, td:first-child { color: var(--muted); font-weight: 400; }
-    pre { margin: 0; font: 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; }
+    pre, .log { margin: 0; font: 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; }
+    .log [data-level="warning"] { color: var(--warning); }
+    .log [data-level="error"] { color: var(--error); font-weight: 600; }
 
     @media (max-width: 520px) {
       .row { grid-template-columns: 1fr; gap: 4px; }  /* label above value */
@@ -163,7 +169,9 @@
     html[data-theme="terminal"] .led { border-radius: 0; }
     html[data-theme="terminal"] th { color: var(--crt-bright); font-weight: 400; text-transform: uppercase; }
     html[data-theme="terminal"] th, html[data-theme="terminal"] td { border-bottom-color: var(--crt-grid); }
-    html[data-theme="terminal"] pre { font: 20px/1.25 var(--crt-font); }
+    html[data-theme="terminal"] :is(pre, .log) { font: 20px/1.25 var(--crt-font); }
+    html[data-theme="terminal"] .log [data-level="warning"] { color: var(--crt-amber); }
+    html[data-theme="terminal"] .log [data-level="error"] { color: var(--crt-red); }
 
     html[data-theme="terminal"][data-connection="closed"] #connection { color: var(--crt-bg); background: var(--crt-amber); padding: 0 6px; }
 
@@ -244,7 +252,7 @@
             ...item.rows.map((row) => el("tr", {}, el("td", {}, row),
               ...item.columns.map((column) => bound("td", `${item.id}.${row}.${column}`, { dataset: { column } }))))));
         case "LogMonitor":
-          return bound("pre", item.id);
+          return bound("div", item.id, { className: "log", dataset: { mode: "log" } });
         case "Sparkline":
           return el("div", { className: "spark" },
             bound("div", `${item.id}.values`, { className: "chart", dataset: { mode: "sparkline" } }),

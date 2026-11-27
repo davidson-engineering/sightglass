@@ -16,6 +16,7 @@ from playwright.async_api import async_playwright, expect
 
 from sightglass import (
     IndicatorLamp,
+    LogMonitor,
     Monitor,
     ProgressBar,
     RangeBar,
@@ -268,6 +269,43 @@ async def test_generic_page_draws_declared_and_new_elements(page, serve):
     await expect(page.locator(".row", has_text="Job")).to_contain_text("25.0%")
     await expect(page.locator(".row", has_text="status")).to_contain_text("ok")
     await expect(page.locator("#connection")).to_have_text("Live")
+
+
+async def test_log_binding_marks_each_lines_level(page, serve):
+    monitor = Monitor()
+    monitor.add(LogMonitor("log", lines=5))
+    await page.goto(
+        serve('<div id="log" data-bind="log" data-mode="log"></div>', monitor)
+    )
+    for line in [
+        "12:00:01 INFO started",
+        "WARNING: disk 91% full",
+        "12:00:03 ERROR job 7 gave up",
+        "CRITICAL down",
+        "no error here",
+    ]:
+        monitor.set("log", line)
+    lines = page.locator("#log > *")
+    await expect(lines).to_have_count(5)
+    await expect(lines.nth(4)).to_have_text("no error here")
+    levels = [await lines.nth(n).get_attribute("data-level") for n in range(5)]
+    assert levels == ["info", "warning", "error", "error", None]
+
+
+async def test_generic_page_shows_errors_in_a_log_apart_from_the_rest(page, serve):
+    monitor = Monitor()
+    monitor.add(LogMonitor("events", lines=3, label="Events"))
+    await page.goto(serve(None, monitor))
+    monitor.set("events", "INFO fine")
+    monitor.set("events", "ERROR broken")
+    row = page.locator(".row", has_text="Events")
+    error = row.locator('[data-level="error"]')
+    await expect(error).to_have_text("ERROR broken")
+    colours = await row.evaluate(
+        """row => [...row.querySelectorAll('[data-mode="log"] > *')]
+            .map(line => getComputedStyle(line).color)"""
+    )
+    assert colours[0] != colours[1]
 
 
 async def test_signals_view_lists_every_value_sent_with_its_last_minute(page, serve):

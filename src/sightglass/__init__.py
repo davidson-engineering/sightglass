@@ -41,6 +41,7 @@ from .elements import (
     TextElement,
 )
 from .formatting import Style, TextFormat
+from .logs import LogHandler
 from .monitor import Group, Monitor, Output, Source, Update, WriteError, start
 from .sources.simulated import SimulatedSource
 from .sources.stdin import StdinSource
@@ -100,6 +101,7 @@ __all__ = [
     "JsonDecoder",
     "KeyValueDecoder",
     "LineDecoder",
+    "LogHandler",
     "LogMonitor",
     "MachineState",
     "Monitor",

@@ -61,6 +61,10 @@ monitor.set("status", "done")
   and is `web.url` on the `WebDashboard` object).
 - When the program exits, open pages keep the final values, marked
   disconnected.
+- Log records too: `logging.getLogger().addHandler(LogHandler(monitor))`
+  shows the last 20 as `log`, warnings amber and errors red. `LogHandler`
+  also takes a `Client`, and an id: `LogHandler(monitor, "events",
+  level=logging.WARNING)`.
 
 ### Choosing how values look
 
@@ -243,7 +247,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | many flags in one integer | `MachineState(id, states=[...])` (bit 0 first) | an integer |
 | a position | `Coordinate(id, axes=("x", "y", "z"))` | a list, or `id.x` |
 | a grid | `Table(id, rows=[...], columns=[...])` | `id.row.column` |
-| recent events | `LogMonitor(id, lines=10, timestamp=True)` | a string |
+| recent events | `LogMonitor(id, lines=10, timestamp=True)` | a string; a line starting `WARNING` or `ERROR` (after the time) is coloured |
 
 ## 5. A custom page
 
