@@ -10,9 +10,13 @@ uv run ruff check . && uv run ruff format --check .
 ```
 
 The serial tests use pseudo-terminals, so they run on macOS and Linux and are
-skipped on Windows. CI runs everything on Linux, macOS and Windows for each
-supported Python version, except the browser tests (`-m browser`), which run
-once, in Chromium on Linux: the page's JavaScript is the same everywhere.
+skipped on Windows. CI runs the tests on Linux for each supported Python
+version on every pull request and push to `main`. macOS and Windows minutes
+cost far more, so those run for a release's pull request (a branch named
+`release/...`), or on any branch from Actions > CI > Run workflow: use it
+before merging a change to platform code (paths, processes, ctypes). The
+browser tests (`-m browser`) run once, in Chromium on Linux: the page's
+JavaScript is the same everywhere.
 
 `uv run --all-extras python docs/screenshot.py` retakes the README's
 screenshots after a change to the launch demo (`src/sightglass/launch/`).
@@ -22,7 +26,9 @@ screenshots after a change to the launch demo (`src/sightglass/launch/`).
 Releases are published to PyPI by `.github/workflows/release.yml` when a
 GitHub release is published.
 
-1. Set `__version__` in `src/sightglass/__init__.py` and merge to `main`.
+1. Set `__version__` in `src/sightglass/__init__.py` on a branch named
+   `release/v<version>`, and merge its pull request to `main` once CI has
+   passed on Linux, macOS and Windows.
 2. Create a GitHub release with the tag `v<version>` (e.g. `v0.2.0`). The
    workflow checks the tag matches `__version__`, builds, and uploads.
 
