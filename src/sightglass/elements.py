@@ -497,8 +497,7 @@ class LogMonitor(Element):
         return "\n".join(self.entries)
 
     def render(self, width: int) -> str:
-        padded = [*self.entries, *[""] * (self.lines - len(self.entries))]
-        return "\n".join(self._styled(fit(entry, width)) for entry in padded)
+        return "\n".join(self._styled(fit(entry, width)) for entry in self.entries)
 
     @staticmethod
     def _styled(line: str) -> str:

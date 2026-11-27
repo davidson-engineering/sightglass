@@ -70,16 +70,29 @@ class TerminalDisplay:
             size = shutil.get_terminal_size()
             frame = self.screen(monitor, size.columns, size.lines)
             return "\n".join(frame.split("\n")[: size.lines])  # never scroll
-        width = min(self.width, shutil.get_terminal_size().columns)
-        blocks = []
-        for item in monitor.layout:
-            if isinstance(item, Group):
-                inner = width - 4 if item.border else width
-                body = "\n".join(_render_element(el, inner) for el in item.elements)
-                blocks.append(boxed(body, width, item.name) if item.border else body)
-            else:
-                blocks.append(_render_element(item, width))
-        return "\n".join(blocks)
+        size = shutil.get_terminal_size()
+        width = min(self.width, size.columns)
+        blocks = [_render_item(item, width) for item in monitor.layout]
+        heights = [block.count("\n") + 1 for block in blocks]
+        if sum(heights) <= size.lines:
+            return "\n".join(blocks)
+        shown: list[str] = []
+        used = 0
+        left = sum(_count(item) for item in monitor.layout)
+        for item, block, height in zip(monitor.layout, blocks, heights, strict=True):
+            room = size.lines - 1 - used  # keep a line for the note
+            if height > room:
+                if isinstance(item, Group):  # as much of it as fits
+                    part = _fit_group(item, width, room)
+                    if part:
+                        shown.append(part[0])
+                        left -= part[1]
+                break
+            shown.append(block)
+            used += height
+            left -= _count(item)
+        shown.append(f"+ {left} more id{'s' if left != 1 else ''}")
+        return "\n".join(shown)
 
     async def run(self, monitor: Monitor) -> None:
         out = self.stream or sys.stdout
@@ -131,3 +144,33 @@ def _render_element(element: Element, width: int) -> str:
     if element.block:  # a table or log: label it with a heading line
         return f"{HEADING.apply(element.label)}\n{element.render(width)}"
     return element.render(width)
+
+
+def _render_item(item: Element | Group, width: int) -> str:
+    if isinstance(item, Group):
+        inner = width - 4 if item.border else width
+        body = "\n".join(_render_element(el, inner) for el in item.elements)
+        return boxed(body, width, item.name) if item.border else body
+    return _render_element(item, width)
+
+
+def _count(item: Element | Group) -> int:
+    return len(item.elements) if isinstance(item, Group) else 1
+
+
+def _fit_group(group: Group, width: int, room: int) -> tuple[str, int] | None:
+    """The group's first elements that fit in ``room`` lines, and how many."""
+    inner = width - 4 if group.border else width
+    room -= 2 if group.border else 0
+    lines: list[str] = []
+    count = 0
+    for element in group.elements:
+        text = _render_element(element, inner)
+        if len(lines) + text.count("\n") + 1 > room:
+            break
+        lines.append(text)
+        count += 1
+    if not count:
+        return None
+    body = "\n".join(lines)
+    return (boxed(body, width, group.name) if group.border else body), count

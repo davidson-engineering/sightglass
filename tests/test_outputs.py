@@ -1,11 +1,13 @@
 import asyncio
 import io
 import os
+import re
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from sightglass import (
+    LogMonitor,
     MachineState,
     Monitor,
     ProgressBar,
@@ -454,3 +456,27 @@ async def test_the_signals_stream_says_whether_to_show_figures():
             snapshot = await ws.receive_json(timeout=1)
             assert snapshot["debug"] is debug
             await ws.close()
+
+
+def test_terminal_generic_layout_never_scrolls(monkeypatch):
+    """Declared elements come first; what doesn't fit is counted, not scrolled."""
+    monkeypatch.setattr("shutil.get_terminal_size", lambda: os.terminal_size((80, 24)))
+    monitor = make_monitor()
+    monitor.update({"speed": 5, "X.velocity": 50, "job": 25})
+    for n in range(30):
+        monitor.set(f"res.app.workers.worker-{n}", n)
+    frame = TerminalDisplay().render(monitor).split("\n")
+    assert len(frame) == 24
+    assert frame[0] == "Speed: 5"
+    assert any("velocity" in line for line in frame)
+    assert re.fullmatch(r"\+ \d+ more ids", frame[-1])
+    shown = sum("worker-" in line for line in frame)
+    assert shown + int(frame[-1].split()[1]) >= 30
+
+
+def test_terminal_log_is_not_padded(monkeypatch):
+    monkeypatch.setattr("shutil.get_terminal_size", lambda: os.terminal_size((80, 24)))
+    monitor = Monitor()
+    monitor.add(LogMonitor("events", lines=10))
+    monitor.set("events", "one")
+    assert TerminalDisplay().render(monitor).count("\n") == 1  # heading + entry
