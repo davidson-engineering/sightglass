@@ -49,7 +49,7 @@ from typing import Any
 from aiohttp import WSCloseCode, WSMsgType, web
 
 from ..decoders import DecodeError, KeyValueDecoder, flatten
-from ..monitor import Monitor, WriteError
+from ..monitor import TITLE, Monitor, WriteError
 from ..signals import RESOLUTION, slot_at
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ class WebDashboard:
         static_dir: str | Path | None = None,
         host: str = "127.0.0.1",
         port: int = 8080,
-        title: str = "Monitor",
+        title: str = TITLE,
         token: str | None = None,
         theme: str = "classic",
         stale_after: float | None = None,

@@ -38,6 +38,12 @@ _MAX_REPORTED_KEYS = 1000
 # A lamp the monitor creates for a boolean is white when off, not alarming red.
 UNLIT = Style(fg="white", bold=True)
 
+# Defaults every way in (Python, the command line, a config file) shares.
+MAX_ELEMENTS = 2000
+"""The most ids that get an element of their own, unless told otherwise."""
+TITLE = "Dashboard"
+"""The page heading, unless given one."""
+
 WRITES_ENV = "SIGHTGLASS_ALLOW_WRITES"
 """The environment variable that must be ``1`` for any value to be written to
 a device, whatever the source's own setting."""
@@ -137,7 +143,7 @@ class Monitor:
         self,
         *,
         strict: bool = False,
-        max_elements: int = 500,
+        max_elements: int = MAX_ELEMENTS,
         history: float | None = None,
     ) -> None:
         self.strict = strict
@@ -669,13 +675,18 @@ def start(
     sources: Iterable[Source] = (),
     outputs: Iterable[Output] | None = None,
     strict: bool = False,
+    max_elements: int = MAX_ELEMENTS,
+    history: float | None = None,
 ) -> Monitor:
     """Create a :class:`Monitor` and :meth:`~Monitor.start` it in the background::
 
     monitor = start()                 # prints the dashboard's address
     monitor.set("progress", 0.5)      # from anywhere in your program
+
+    ``strict``, ``max_elements`` and ``history`` are :class:`Monitor`'s.
     """
-    return Monitor(strict=strict).start(sources=sources, outputs=outputs)
+    monitor = Monitor(strict=strict, max_elements=max_elements, history=history)
+    return monitor.start(sources=sources, outputs=outputs)
 
 
 def _default_outputs(outputs: Iterable[Output] | None) -> list[Output]:

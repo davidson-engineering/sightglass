@@ -28,7 +28,7 @@ from .decoders import (
     KeyValueDecoder,
 )
 from .history import History
-from .monitor import WRITES_ENV, Monitor, Output, Source
+from .monitor import MAX_ELEMENTS, TITLE, WRITES_ENV, Monitor, Output, Source
 from .sources.stdin import StdinSource
 
 EXAMPLES = """\
@@ -171,7 +171,7 @@ def parser() -> argparse.ArgumentParser:
         default="127.0.0.1",
         help="interface to listen on; 0.0.0.0 allows other machines",
     )
-    display.add_argument("--title", default="Monitor", help="page heading")
+    display.add_argument("--title", default=TITLE, help="page heading")
     display.add_argument(
         "--theme",
         choices=["classic", "terminal"],
@@ -197,9 +197,9 @@ def parser() -> argparse.ArgumentParser:
     display.add_argument(
         "--max-elements",
         type=int,
-        default=500,
+        default=MAX_ELEMENTS,
         metavar="N",
-        help="the most ids that get a display of their own (default: 500); "
+        help=f"the most ids that get a display of their own (default: {MAX_ELEMENTS}); "
         "raise it for a PLC with more variables",
     )
     display.add_argument(
@@ -313,9 +313,9 @@ def config_build(
         "--rest-header": args.rest_header,
         "--demo": args.demo,
         "--terminal": args.terminal,
-        "--title": args.title != "Monitor",
+        "--title": args.title != TITLE,
         "--history": args.history is not None,
-        "--max-elements": args.max_elements != 500,
+        "--max-elements": args.max_elements != MAX_ELEMENTS,
     }
     if given := [flag for flag, value in elsewhere.items() if value]:
         raise ValueError(
@@ -389,12 +389,12 @@ def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
         "--rest": args.rest,
         "--vars": args.vars,
         "--allow-writes": args.allow_writes,
-        "--title": args.title != "Monitor",
+        "--title": args.title != TITLE,
         "--token": args.token,
         "--stale-after": args.stale_after,
         "--debug": args.debug,
         "--history": args.history is not None,
-        "--max-elements": args.max_elements != 500,
+        "--max-elements": args.max_elements != MAX_ELEMENTS,
         "--terminal": args.terminal and not terminal,
     }
     if given := [flag for flag, value in ignored.items() if value]:

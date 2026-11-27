@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from ..elements import Element
-from ..monitor import Source
+from ..monitor import MAX_ELEMENTS, TITLE, Source
 from . import sources
 from ._config import number, only, tables
 from .page import render
@@ -180,9 +180,9 @@ def _build(data: dict[str, Any], base: Path) -> Dashboard:
         raise ValueError(
             f"history is {history:.15g} s but a panel plots {longest:.15g} s"
         )
-    max_elements = int(number(data, "max_elements", 2000, "the config"))
+    max_elements = int(number(data, "max_elements", MAX_ELEMENTS, "the config"))
     panel_width = int(number(data, "panel_width", 520, "the config"))
-    title = data.get("title", "Dashboard")
+    title = data.get("title", TITLE)
     version = data.get("version", "")
     if (
         not isinstance(title, str)

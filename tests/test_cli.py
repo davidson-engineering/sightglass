@@ -20,6 +20,7 @@ from sightglass import (
     ZmqSource,
 )
 from sightglass.cli import build, parser
+from sightglass.monitor import MAX_ELEMENTS
 
 from .conftest import run_cli, stop
 
@@ -70,11 +71,11 @@ def test_theme_option_reaches_both_kinds_of_page(monkeypatch):
 
 def test_max_elements_lets_a_big_plc_show_every_variable(monkeypatch):
     monkeypatch.setattr("sys.stdin", Terminal())
-    monitor, _, _ = build(args("--max-elements", "2000", "--history", "60"))
-    assert monitor.max_elements == 2000
-    monitor.update({f"GVL.f{i}": i for i in range(1500)})
-    assert len(monitor.signals) == 1500
-    assert build(args())[0].max_elements == 500  # the default
+    monitor, _, _ = build(args("--max-elements", "5000", "--history", "60"))
+    assert monitor.max_elements == 5000
+    monitor.update({f"GVL.f{i}": i for i in range(3000)})
+    assert len(monitor.signals) == 3000
+    assert build(args())[0].max_elements == MAX_ELEMENTS  # the default
 
 
 def test_ads_names_split_on_commas_outside_array_indexes():

@@ -7,7 +7,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from sightglass import RestSource
+from sightglass import Monitor, RestSource, WebDashboard
 from sightglass.cli import build, parser
 from sightglass.dashboard import load, render
 
@@ -30,8 +30,10 @@ def write(tmp_path, text):
 
 def test_a_minimal_config_gets_the_defaults(tmp_path):
     dashboard = load(write(tmp_path, MINIMAL))
-    assert dashboard.title == "Dashboard"
-    assert dashboard.max_elements == 2000 and dashboard.panel_width == 520
+    # The same defaults as a dashboard made in Python or on the command line.
+    assert dashboard.title == WebDashboard().title == "Dashboard"
+    assert dashboard.max_elements == Monitor().max_elements == 2000
+    assert dashboard.panel_width == 520
     assert dashboard.history == 360  # the longest range, and a minute
     (panel,) = dashboard.panels
     assert [(p.role, p.seconds, p.grow) for p in panel.plots] == [

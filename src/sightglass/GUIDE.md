@@ -209,8 +209,8 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 - **Windows:** needs TwinCAT's ADS router installed (XAE, XAR or TC1000).
 - **No PLC to hand:** `sightglass --demo load` reads a fake one over real
   ADS (`sightglass.fake_plc`, on 127.0.0.1:48898, target `127.0.0.1.1.1`).
-- **More than 500 variables:** add `--max-elements 2000` (or
-  `Monitor(max_elements=2000)`); past the limit, values are dropped.
+- **More than 2000 variables:** add `--max-elements 5000` (or
+  `Monitor(max_elements=5000)`); past the limit, values are dropped.
 - Warnings name every variable that couldn't be read and why (unknown name,
   undeclared struct type, size mismatch with the declaration); read them.
 
@@ -228,7 +228,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 - Floats that need more than 6 significant digits are shortened; use
   `TextFormat(precision=2)` for a fixed number of decimals.
 - `Monitor(strict=True)` rejects ids that weren't declared (logged once per
-  id); by default at most `max_elements=500` are created (`--max-elements`
+  id); by default at most `max_elements=2000` are created (`--max-elements`
   on the command line). Ids past that are dropped, with a warning.
 
 | To show | Element | Update with |

@@ -18,6 +18,7 @@ from sightglass import (
     Table,
     TextElement,
     WriteError,
+    start,
 )
 from sightglass.monitor import WRITES_ENV
 
@@ -418,3 +419,12 @@ def test_a_missing_optional_dependency_says_what_to_install(monkeypatch):
     monkeypatch.delitem(vars(sightglass), "AdsSource", raising=False)
     with pytest.raises(ImportError, match=r"pip install 'sightglass\[ads\]'"):
         sightglass.AdsSource  # noqa: B018
+
+
+def test_start_takes_every_monitor_option():
+    monitor = start(outputs=[], strict=True, max_elements=7, history=30)
+    try:
+        assert monitor.strict and monitor.max_elements == 7
+        assert monitor.history is not None
+    finally:
+        monitor.stop()
