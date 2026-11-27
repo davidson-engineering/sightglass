@@ -16,6 +16,7 @@ from playwright.async_api import async_playwright, expect
 
 from sightglass import (
     IndicatorLamp,
+    LogMonitor,
     Monitor,
     ProcessSource,
     ProgressBar,
@@ -285,6 +286,43 @@ async def test_generic_page_draws_declared_and_new_elements(page, serve):
     await expect(page.locator(".row", has_text="Job")).to_contain_text("25.0%")
     await expect(page.locator(".row", has_text="status")).to_contain_text("ok")
     await expect(page.locator("#connection")).to_have_text("Live")
+
+
+async def test_log_binding_marks_each_lines_level(page, serve):
+    monitor = Monitor()
+    monitor.add(LogMonitor("log", lines=5))
+    await page.goto(
+        serve('<div id="log" data-bind="log" data-mode="log"></div>', monitor)
+    )
+    for line in [
+        "12:00:01 INFO started",
+        "WARNING: disk 91% full",
+        "12:00:03 ERROR job 7 gave up",
+        "CRITICAL down",
+        "no error here",
+    ]:
+        monitor.set("log", line)
+    lines = page.locator("#log > *")
+    await expect(lines).to_have_count(5)
+    await expect(lines.nth(4)).to_have_text("no error here")
+    levels = [await lines.nth(n).get_attribute("data-level") for n in range(5)]
+    assert levels == ["info", "warning", "error", "error", None]
+
+
+async def test_generic_page_shows_errors_in_a_log_apart_from_the_rest(page, serve):
+    monitor = Monitor()
+    monitor.add(LogMonitor("events", lines=3, label="Events"))
+    await page.goto(serve(None, monitor))
+    monitor.set("events", "INFO fine")
+    monitor.set("events", "ERROR broken")
+    row = page.locator(".row", has_text="Events")
+    error = row.locator('[data-level="error"]')
+    await expect(error).to_have_text("ERROR broken")
+    colours = await row.evaluate(
+        """row => [...row.querySelectorAll('[data-mode="log"] > *')]
+            .map(line => getComputedStyle(line).color)"""
+    )
+    assert colours[0] != colours[1]
 
 
 async def test_signals_view_lists_every_value_sent_with_its_last_minute(page, serve):
@@ -557,8 +595,9 @@ for (const name of ["stroke", "strokeText", "fillText"]) {
 """
 
 
-async def test_plot_draws_lowest_and_highest_value_over_the_lines(page, serve):
-    """The labels come after the lines, each outlined, so no line hides them."""
+async def test_plot_value_labels_are_drawn_over_the_lines(page, serve):
+    """The value axis's labels come after the lines, each outlined, so no line
+    hides them."""
     await page.add_init_script(RECORD_DRAWING)
     monitor = Monitor(history=60)
     monitor.update({"a": 1, "b": 3})
@@ -568,14 +607,148 @@ async def test_plot_draws_lowest_and_highest_value_over_the_lines(page, serve):
     )
     await page.goto(serve(plot, monitor))
     await expect(page.locator("#plot")).to_have_attribute("data-plot-range", "1 3")
+    ticks = (await page.locator("#plot").get_attribute("data-plot-ticks")).split()
     ops = await page.evaluate("window.ops")
     after_lines = ops[len(ops) - ops[::-1].index("stroke") :]
-    assert after_lines == [
-        "strokeText:3",
-        "fillText:3",
-        "strokeText:1",
-        "fillText:1",
-    ]
+    labels = [f"{op}:{tick}" for tick in ticks for op in ("strokeText", "fillText")]
+    assert after_lines[: len(labels)] == labels
+
+
+async def plot_values(page, serve, monitor, attributes, *updates, style=""):
+    """Serve a 400 px plot of ``attributes`` fed ``updates`` a sample apart;
+    return its element once its range shows the last of them."""
+    await page.add_init_script(RECORD_LABELS)
+    for update in updates:
+        monitor.update(update)
+        await asyncio.sleep(0.06)  # a 50 ms slot each
+    plot = (
+        f'<div id="plot" data-seconds="10" {attributes}'
+        f' style="width: 400px; height: 200px; font: 12px sans-serif; {style}"></div>'
+    )
+    await page.goto(serve(plot, monitor))
+    element = page.locator("#plot")
+    await expect(element).to_have_attribute("data-plot-ticks", re.compile("."))
+    return element
+
+
+async def test_plot_value_axis_has_round_ticks_in_its_units(page, serve):
+    plot = await plot_values(
+        page,
+        serve,
+        Monitor(history=60),
+        'data-plot="cpu" data-plot-units="%"',
+        {"cpu": 0},
+        {"cpu": 100},
+    )
+    await expect(plot).to_have_attribute("data-plot-ticks", "0 20 40 60 80 100")
+    labels = await page.evaluate("[...window.labels.plot]")
+    assert {"0 %", "20 %", "100 %"} <= set(labels), labels
+
+
+async def test_plot_ticks_share_their_decimals(page, serve):
+    plot = await plot_values(
+        page,
+        serve,
+        Monitor(history=60),
+        'data-plot="p95" data-plot-units="ms"',
+        {"p95": 1.2},
+        {"p95": 3.7},
+    )
+    ticks = (await plot.get_attribute("data-plot-ticks")).split()
+    assert ticks == ["1.5", "2.0", "2.5", "3.0", "3.5"], ticks
+
+
+async def test_plot_scale_turns_raw_values_into_the_units_shown(page, serve):
+    plot = await plot_values(
+        page,
+        serve,
+        Monitor(history=60),
+        'data-plot="rss" data-plot-scale="0.0009765625" data-plot-units="KB"',
+        {"rss": 51200},
+        {"rss": 102400},
+    )
+    await expect(plot).to_have_attribute("data-plot-range", "50 100")
+    await expect(plot).to_have_attribute("data-plot-ticks", "50 60 70 80 90 100")
+    assert "100 KB" in await page.evaluate("[...window.labels.plot]")
+
+
+async def test_plot_shortens_big_numbers_with_a_prefix(page, serve):
+    plot = await plot_values(
+        page,
+        serve,
+        Monitor(history=60),
+        'data-plot="rss" data-plot-units="B"',
+        {"rss": 46_890_000},
+        {"rss": 230_900_000},
+    )
+    await expect(plot).to_have_attribute("data-plot-ticks", "50M 100M 150M 200M")
+    assert "200 MB" in await page.evaluate("[...window.labels.plot]")
+
+
+# How many of a canvas's pixels are close to each of the given colours.
+PIXELS_NEAR = """(el, colours) => {
+  const canvas = el.querySelector("canvas");
+  const { width, height } = canvas;
+  const data = canvas.getContext("2d").getImageData(0, 0, width, height).data;
+  const channels = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const rgb = colours.map(channels);
+  const counts = colours.map(() => 0);
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 250) continue;
+    rgb.forEach(([r, g, b], n) => {
+      const off = Math.abs(data[i] - r) + Math.abs(data[i + 1] - g)
+        + Math.abs(data[i + 2] - b);
+      if (off < 30) counts[n]++;
+    });
+  }
+  return counts;
+}"""
+
+
+async def test_a_few_ids_get_a_colour_each_and_a_legend(page, serve):
+    plot = await plot_values(
+        page,
+        serve,
+        Monitor(history=60),
+        'data-plot="jobs.queue jobs.p95"',
+        {"jobs.queue": 0, "jobs.p95": 3},
+        {"jobs.queue": 4, "jobs.p95": 2},
+    )
+    await expect(plot).to_have_attribute("data-plot-legend", "queue p95")
+    labels = await page.evaluate("[...window.labels.plot]")
+    assert {"queue", "p95"} <= set(labels)
+    blue, orange = await plot.evaluate(PIXELS_NEAR, ["#257de0", "#f47230"])
+    assert blue > 50 and orange > 50, (blue, orange)
+
+
+async def test_a_dark_plot_takes_the_palettes_dark_steps(page, serve):
+    plot = await plot_values(
+        page,
+        serve,
+        Monitor(history=60),
+        'data-plot="a b"',
+        {"a": 0, "b": 3},
+        {"a": 4, "b": 2},
+        style="background: #111315; color: #e8eaed",
+    )
+    blue, orange = await plot.evaluate(PIXELS_NEAR, ["#338ced", "#e76624"])
+    assert blue > 50 and orange > 50, (blue, orange)
+
+
+async def test_one_id_or_very_many_keep_the_elements_colour_and_no_legend(page, serve):
+    monitor = Monitor(history=60)
+    monitor.update({f"wave.{n}": n for n in range(9)})
+    plots = "".join(
+        f'<div id="{name}" data-plot="{ids}" data-seconds="10"'
+        ' style="width: 400px; height: 200px; color: rgb(255, 0, 0)"></div>'
+        for name, ids in [("one", "wave.0"), ("many", "wave.*")]
+    )
+    await page.goto(serve(plots, monitor))
+    for name in ("one", "many"):
+        plot = page.locator(f"#{name}")
+        await expect(plot).to_have_attribute("data-plot-ticks", re.compile("."))
+        assert await plot.get_attribute("data-plot-legend") is None
+        assert await plot.evaluate(RED_PIXELS) > 50
 
 
 async def test_a_config_dashboard_wraps_its_panels_and_fills_the_screen(

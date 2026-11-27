@@ -29,7 +29,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A ZeroMQ publisher | `sightglass --zmq ENDPOINT` (`--pull` for PUSH senders: nothing lost; `--json`, `--csv`, `--binary` as for serial) |
 | A Beckhoff TwinCAT PLC (ADS) | `sightglass --ads NETID --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | A REST API that answers GET with JSON | `sightglass --rest http://host:8000/metrics` (repeat `--rest`; `--rest-interval`, `--rest-header 'X-Api-Key: ...'`), or `RestSource("http://host/metrics", interval=2)`; needs `[rest]` |
-| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; every key: https://github.com/davidson-engineering/sightglass/blob/main/docs/config.md |
+| A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb; or none, fed by `POST /update`) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; from Python, `load("dashboard.toml").start(port=8080)` (`from sightglass.dashboard import load`) serves it and returns the monitor; every key: https://github.com/davidson-engineering/sightglass/blob/main/docs/config.md |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
 | Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 
@@ -64,6 +64,10 @@ monitor.set("status", "done")
   and is `web.url` on the `WebDashboard` object).
 - When the program exits, open pages keep the final values, marked
   disconnected.
+- Log records too: `logging.getLogger().addHandler(LogHandler(monitor))`
+  shows the last 20 as `log`, warnings amber and errors red. `LogHandler`
+  also takes a `Client`, and an id: `LogHandler(monitor, "events",
+  level=logging.WARNING)`.
 
 ### Choosing how values look
 
@@ -246,7 +250,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | many flags in one integer | `MachineState(id, states=[...])` (bit 0 first) | an integer |
 | a position | `Coordinate(id, axes=("x", "y", "z"))` | a list, or `id.x` |
 | a grid | `Table(id, rows=[...], columns=[...])` | `id.row.column` |
-| recent events | `LogMonitor(id, lines=10, timestamp=True)` | a string |
+| recent events | `LogMonitor(id, lines=10, timestamp=True)` | a string; a line starting `WARNING` or `ERROR` (after the time) is coloured |
 
 ## 5. A custom page
 
@@ -281,8 +285,12 @@ Serve it with `WebDashboard("page.html", static_dir="static")` (files in
   ratio, or `height: calc(var(--value) * 100%)` for a level.
 - **Plots against time:** `data-plot` names ids or patterns (space-separated,
   `*` for any characters) and draws them over the last `data-seconds`, live,
-  in the element's CSS `color` and `font`. It needs the dashboard's history
-  (`--history`); without it the element gets `data-plot-error`.
+  in the element's CSS `color` and `font`; two to eight ids get a colour
+  each and a legend. History keeps values as sent: `data-plot-units="MB"`
+  and `data-plot-scale="0.00000095367431640625"` show bytes as MB. Plot
+  values of different units in separate plots: a plot has one value axis.
+  It needs the dashboard's history (`--history`); without it the element
+  gets `data-plot-error`.
   `data-plot-mode="heatmap"` draws a row per id instead, marking where each
   goes far from its usual value: for hundreds or thousands of ids.
 - **Several feeds:** `data-stale-after="3"` gives an element

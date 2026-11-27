@@ -7,6 +7,10 @@
 //   <div data-bind="rate.values" data-mode="sparkline"></div>       line chart of a number list
 //   <div data-bind="q.ratio" data-mode="var"></div>                 CSS variable --value: the number
 //                                                                   (unset if not a number; true = 1)
+//   <div data-bind="events" data-mode="log"></div>                  a <div> per line; a line starting
+//                                                                   with its level (after the time)
+//                                                                   gets data-level="debug" | "info"
+//                                                                   | "warning" | "error"
 //
 // A page that only plots (data-plot, which reads /history) and binds nothing
 // can say so on the script tag, <script src="/_sightglass/sightglass.js"
@@ -126,8 +130,30 @@
   const isOn = (value) =>
     typeof value === "string" ? !OFF.has(value.trim().toLowerCase()) : Boolean(value);
 
+  // The same rule as LogMonitor's in Python (elements.LEVEL).
+  const LEVEL =
+    /^(?:\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\s+)?(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b/;
+  const LEVELS = {
+    DEBUG: "debug", INFO: "info", WARNING: "warning", WARN: "warning",
+    ERROR: "error", CRITICAL: "error", FATAL: "error",
+  };
+
+  function drawLog(el, value) {
+    const text = value === null || value === undefined ? "" : String(value);
+    el.replaceChildren(...(text === "" ? [] : text.split("\n")).map((line) => {
+      const div = document.createElement("div");
+      div.textContent = line;
+      const found = LEVEL.exec(line);
+      if (found) div.dataset.level = LEVELS[found[1]];
+      return div;
+    }));
+  }
+
   function show(el, value) {
     switch (el.dataset.mode) {
+      case "log":
+        drawLog(el, value);
+        break;
       case "state":
         el.dataset.state = isOn(value) ? "on" : "off";
         break;

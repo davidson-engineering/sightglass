@@ -66,6 +66,16 @@ from sightglass import ProcessSource, start
 monitor = start(sources=[ProcessSource()])  # samples once a second
 ```
 
+To show your program's log records too, with warnings and errors in colour:
+
+```python
+import logging
+
+from sightglass import LogHandler
+
+logging.getLogger().addHandler(LogHandler(monitor))  # the last 20, as "log"
+```
+
 ### Without writing code
 
 ```bash
@@ -140,7 +150,7 @@ monitor.start()
 | `MachineState` | named on/off states packed into one integer | an integer (bit 0 = first state) |
 | `Coordinate` | a multi-axis position | a list, or per axis: `"<id>.x"` |
 | `Table` | a grid of cells | per cell: `"<id>.<row>.<column>"` |
-| `LogMonitor` | the latest messages | a string |
+| `LogMonitor` | the latest messages, warnings and errors in colour | a string; `LogHandler` sends log records |
 
 Elements that show a number take `format=TextFormat(precision=1)`; lamps take
 `on_style=` and `off_style=`. `Monitor(strict=True)` rejects ids you didn't

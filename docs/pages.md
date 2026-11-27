@@ -37,6 +37,7 @@ its own:
 <div class="bar" data-bind="X.velocity.ratio" data-mode="width"></div> <!-- width: 0-100% -->
 <div data-bind="rate.values" data-mode="sparkline"></div>              <!-- line chart -->
 <div class="dial" data-bind="pressure.ratio" data-mode="var"></div>    <!-- CSS variable --value -->
+<div data-bind="events" data-mode="log"></div>                        <!-- a <div> per line, with data-level -->
 <span data-bind="wind" data-stale-after="3"></span>                    <!-- data-stale="true" once quiet -->
 
 <!-- A segment display: data-ghost draws the unlit segments. -->
@@ -46,6 +47,12 @@ its own:
 
 <script src="/_sightglass/sightglass.js"></script>
 ```
+
+`data-mode="log"` draws a `LogMonitor` a `<div>` per line. A line that starts
+with its level, after the time if it has one (`12:00:03 ERROR ...`,
+`WARNING: ...`), gets `data-level="debug"`, `"info"`, `"warning"` or
+`"error"` (for `ERROR`, `CRITICAL` and `FATAL`), so CSS can colour it:
+`[data-level="error"] { color: red }`. `LogHandler` writes lines that way.
 
 `data-mode="var"` sets the CSS variable `--value` to the number, so CSS alone
 can draw a needle (`rotate: calc(var(--value) * 270deg)`) or a fill level
@@ -145,6 +152,26 @@ point and at most 20 times a second, and draws each point from its lowest to
 its highest value. While it can't get points, the element has
 `data-plot-error` with the reason, for example a dashboard without
 `--history`.
+
+- **Units and scale:** history keeps values as sent, so an element's `scale`
+  and `units` don't reach a plot. Give the plot its own:
+  `data-plot-units="MB"` after each value label, and `data-plot-scale` to
+  multiply the values first (`0.00000095367431640625` turns bytes into MB).
+- **The value axis** is labelled at round values, about three lines of text
+  apart, all with the same decimals. A value of 10,000 or more is shortened
+  with k, M or G (`200M`, or `200 MB` with units `B`).
+- **Colours:** two to eight ids are drawn each in its own colour, with a
+  legend at the top right naming them, less the part their names share
+  (`jobs.queue jobs.p95` gives `queue` and `p95`). The colours suit a light
+  or a dark background, whichever the plot has. One id, or more than eight,
+  are drawn in the element's `color`, as one shape.
+- **One scale per plot:** ids plotted together share the value axis, so plot
+  values of different units, or of very different sizes, in plots of their
+  own.
+
+The element gets `data-plot-signals` (how many ids it draws),
+`data-plot-range` (the lowest and highest value in view), `data-plot-ticks`
+(the value labels) and, with colours, `data-plot-legend`.
 
 `sightglass --demo plot --open` plots 100 waveforms sampled 20 times a second,
 each with an occasional spike one sample long. The last minute shows every
