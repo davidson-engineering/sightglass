@@ -57,6 +57,15 @@ element: a lamp for `True`/`False`, text otherwise. Dotted ids like
 `"job.rate"` are grouped under `job`. The dashboard stops when your program
 exits.
 
+To watch the program's own CPU, memory, threads and uptime as well, start it
+with a `ProcessSource`:
+
+```python
+from sightglass import ProcessSource, start
+
+monitor = start(sources=[ProcessSource()])  # samples once a second
+```
+
 To show your program's log records too, with warnings and errors in colour:
 
 ```python

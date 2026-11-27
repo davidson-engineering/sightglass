@@ -97,6 +97,9 @@ class Source(Protocol):
     a claimed id with :meth:`Monitor.update`, :meth:`Monitor.set` or
     ``POST /update`` then go to ``write()`` rather than to the display, which
     keeps showing what the source reads back.
+
+    A source may also list ``elements``: how its ids look. The monitor adds
+    each one whose id isn't declared yet when it starts reading the source.
     """
 
     def updates(self) -> AsyncIterator[list[Update]]: ...
@@ -236,8 +239,21 @@ class Monitor:
             element: Element = IndicatorLamp(key, off_style=UNLIT)
         else:
             element = TextElement(key)
+        self._place(element)
+        return element
+
+    def _declare(self, elements: Sequence[Element]) -> None:
+        """Add a source's own elements, except ids already declared."""
+        new = [element for element in elements if element.id not in self._elements]
+        for element in new:
+            self._place(element)
+        if new:
+            self._mark_changed(element.id for element in new)
+
+    def _place(self, element: Element) -> None:
+        """Register an element, under the group its dotted id names."""
         self._register(element)
-        prefix, dot, _ = key.rpartition(".")
+        prefix, dot, _ = element.id.rpartition(".")
         if dot:
             group = self._groups.get(prefix)
             if group is None:
@@ -247,7 +263,6 @@ class Monitor:
         else:
             self.layout.append(element)
         self.layout_version += 1
-        return element
 
     # -- access -------------------------------------------------------------
 
@@ -488,6 +503,7 @@ class Monitor:
     async def consume(self, source: Source) -> None:
         """Apply every batch ``source`` produces, until it ends or is cancelled."""
         self._bind()
+        self._declare(list(getattr(source, "elements", ())))
         feeds = list(getattr(source, "feeds", ()))
         self._feeds.extend(feeds)
         try:

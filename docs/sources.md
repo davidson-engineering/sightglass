@@ -29,7 +29,39 @@ monitor.serve(sources=[device])
 | `RestSource(*urls, interval=1)` | JSON REST endpoints, polled with GET ([below](#rest-apis)) |
 | `InfluxSource(url, org=, token=, bucket=)` | an InfluxDB 2.x bucket, polled with Flux ([config file](config.md#influxdb) or Python) |
 | `StdinSource()` | piped standard input, as `sightglass` does |
+| `ProcessSource(interval=1)` | the program it runs in: CPU, memory, threads, open files, uptime ([below](#your-programs-own-cpu-and-memory)) |
 | `SimulatedSource(fn, interval=0.05)` | `fn(seconds)` called every `interval` seconds, for demos and tests |
+
+## Your program's own CPU and memory
+
+```python
+from sightglass import ProcessSource, start
+
+monitor = start(sources=[ProcessSource()])
+```
+
+Once a second it sends, and shows under a `process` heading:
+
+| Id | Value | Shown as |
+| --- | --- | --- |
+| `process.cpu` | percent of one core used since the last sample (over 100 with several threads busy) | a chart, `12.5 %` |
+| `process.rss` | resident memory, in bytes | a chart, `74.1 MB` |
+| `process.threads` | Python threads (`threading.active_count()`) | a number |
+| `process.fds` | open files and sockets (not on Windows) | a number |
+| `process.uptime` | seconds since the process started | `125 s` |
+| `process.gc_collections`, `process.gc_collected` | garbage collector runs, and the objects they freed, since the start | numbers |
+
+Declare one of these ids yourself to show it your way; the source keeps
+yours. `prefix="worker"` sends `worker.cpu` and so on, and `interval=` sets
+the seconds between samples. CPU is left out of the first sample rather than
+sent as 0: it is measured between samples.
+
+It needs nothing installed. With [psutil](https://pypi.org/project/psutil/)
+installed it reads memory, open files and uptime through psutil; without it
+they come from the operating system. Uptime outside Linux needs psutil:
+without it, it counts from when sightglass was imported. On Windows
+`process.fds` is not sent: Windows counts handles, which include threads,
+events and registry keys, not just files.
 
 ## Wire formats: decoders
 

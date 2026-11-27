@@ -8,10 +8,10 @@ Quickest start, from inside a program::
     monitor.set("progress", 0.5)       # from any thread; elements appear as used
 
 A :class:`Monitor` holds elements (text, bars, lamps, charts, tables, ...).
-Sources (serial, ZeroMQ, PLCs over ADS, REST APIs, InfluxDB, stdin, simulated) and HTTP
-posts feed it updates keyed by element id, and outputs (web dashboard,
-terminal) display it. Other programs can send values with
-:class:`~sightglass.client.Client`, or with
+Sources (serial, ZeroMQ, PLCs over ADS, REST APIs, InfluxDB, stdin, the
+program's own CPU and memory, simulated) and HTTP posts feed it updates keyed
+by element id, and outputs (web dashboard, terminal) display it. Other
+programs can send values with :class:`~sightglass.client.Client`, or with
 ``curl -d 'progress=5' http://127.0.0.1:8080/update``.
 """
 
@@ -43,6 +43,7 @@ from .elements import (
 from .formatting import Style, TextFormat
 from .logs import LogHandler
 from .monitor import Group, Monitor, Output, Source, Update, WriteError, start
+from .sources.process import ProcessSource
 from .sources.simulated import SimulatedSource
 from .sources.stdin import StdinSource
 from .terminal import TerminalDisplay
@@ -106,6 +107,7 @@ __all__ = [
     "MachineState",
     "Monitor",
     "Output",
+    "ProcessSource",
     "ProgressBar",
     "RangeBar",
     "RestSource",
