@@ -1,0 +1,87 @@
+/* The default look of a dashboard built from a config file (sightglass --config):
+   a dark page for reading from across a room. One screen and no scrolling:
+   cards wrap like Grafana's panels, each at least --card-width wide, so the
+   number per row follows the screen's width and the cards of the last row grow
+   to share what is left; rows share the height equally. Text is sized from the
+   screen's height (vmin), so it scales with the screen. */
+
+:root {
+  color-scheme: dark;
+  /* Bahnschrift is a DIN-style face made for signs and instrument panels:
+     heavy, even digits that stay readable from far away. It ships with
+     Windows 10 and later; other systems get the next one that exists. */
+  --font: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  /* A plot draws its labels in one weight, so name a heavier face. */
+  --font-plot: "Bahnschrift SemiBold", "Bahnschrift", "DIN Alternate",
+    "Segoe UI Semibold", "Segoe UI", Arial, sans-serif;
+  /* The colour of each time range of a panel, longest first. */
+  --range-0: #4fd1ff;
+  --range-1: #ffd166;
+  --range-2: #86efac;
+  --range-3: #f0abfc;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  padding: 1vmin 1.2vmin;
+  gap: 1vmin;
+  background: #080b10;
+  color: #f1f5f9;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+
+header { display: flex; align-items: baseline; gap: 0.5vw 1.2vw; flex-wrap: wrap; }
+h1 { margin: 0; font-size: clamp(16px, 1.9vmin, 40px); font-weight: 700; letter-spacing: 0.01em; }
+/* What identifies this instance (its config, version, start): small and quiet. */
+.identity { color: #64748b; font-size: clamp(11px, 1.2vmin, 24px); }
+header span { margin-left: auto; color: #94a3b8; font-size: clamp(13px, 1.5vmin, 32px); }
+header b { font-weight: 700; }
+
+.grid {
+  --card-width: 520px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1vmin;
+  overflow-y: auto; /* only if the cards can't fit at their least height */
+}
+
+section {
+  flex: 1 1 var(--card-width);
+  min-width: 0;
+  min-height: 180px; /* rows share the rest of the height equally */
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vmin;
+  padding: 1vmin 1.2vmin;
+  background: #121820;
+  border: 1px solid #2a3544;
+  border-radius: 8px;
+}
+
+h2 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-height: 1.1; letter-spacing: 0.01em; }
+
+/* The longest range is the smallest plot, and the shortest gets most of the
+   card. A zero base keeps a plot's canvas from setting its row's height. */
+.plot {
+  flex: 2 1 0px;
+  min-height: 0;
+  overflow: hidden;
+  font-size: clamp(14px, 1.9vmin, 40px);
+  font-family: var(--font-plot);
+}
+.plot.last { flex: 3 1 0px; }
+.plot[data-plot-error] { color: #f87171; }
+
+.range-0 { color: var(--range-0); }
+.range-1 { color: var(--range-1); }
+.range-2 { color: var(--range-2); }
+.range-3 { color: var(--range-3); }

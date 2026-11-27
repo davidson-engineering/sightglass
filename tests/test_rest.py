@@ -256,24 +256,25 @@ def load_fake_api():
     return module
 
 
-async def test_example_fake_api_feeds_the_example_dashboard(consume):
-    """The rest_grid example's ids are the ones its page plots, and the null
-    cells of a short last row are skipped."""
+async def test_example_fake_api_feeds_the_example_dashboard(consume, monkeypatch):
+    """The rest_grid example's config reads the fake API into the ids its panels
+    plot, and the null cells of a short last row are skipped."""
+    from sightglass.dashboard import load
+
     fake = load_fake_api()
     server = TestServer(fake.app())
     await server.start_server()
     try:
-        monitor = Monitor(max_elements=2000)  # ~1,200 ids, as the example sets
-        endpoint = Endpoint(url(server, "/api/arrays"), prefix="grid", select="arrays")
-        consume(monitor, RestSource(endpoint, interval=0.05))
+        monkeypatch.setenv("API_URL", url(server, "/api/arrays"))
+        config = load(
+            Path(__file__).parent.parent / "examples/rest_grid/dashboard.toml"
+        )
+        assert [panel.title for panel in config.panels] == list(fake.ARRAYS)
+        monitor = Monitor(max_elements=config.max_elements)
+        consume(monitor, config.sources[0])
         await until(lambda: "grid.Roof.value.0.0" in monitor)
         rows, cols = fake.ARRAYS["North"]
         assert f"grid.North.value.{rows - 1}.0" in monitor
         assert f"grid.North.value.{rows - 1}.{cols - 1}" not in monitor  # null
-        page = (
-            Path(__file__).parent.parent / "examples/rest_grid/page.html"
-        ).read_text("utf-8")
-        for name in fake.ARRAYS:
-            assert f"grid.{name}.value.0.*" in page
     finally:
         await server.close()

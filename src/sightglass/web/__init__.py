@@ -93,6 +93,8 @@ class WebDashboard:
 
     Args:
         page: your dashboard HTML file; a generic page is used if omitted.
+        html: the page's HTML itself, instead of a file (for a page that is
+            generated, like the one ``sightglass --config`` builds).
         static_dir: served at ``/static/`` (your CSS, images, ...).
         host: interface to listen on. The default only accepts local
             connections; use ``"0.0.0.0"`` to allow other machines (who can
@@ -120,6 +122,7 @@ class WebDashboard:
         self,
         page: str | Path | None = None,
         *,
+        html: str | None = None,
         static_dir: str | Path | None = None,
         host: str = "127.0.0.1",
         port: int = 8080,
@@ -133,6 +136,9 @@ class WebDashboard:
     ) -> None:
         if fps <= 0:
             raise ValueError("fps must be positive")
+        if page and html:
+            raise ValueError("give a page file or html, not both")
+        self.html = html
         self.page = Path(page) if page else ASSETS / "auto.html"
         self.static_dir = Path(static_dir) if static_dir else None
         self.host = host
@@ -245,7 +251,9 @@ class WebDashboard:
             )
             await runner.cleanup()
 
-    async def _index(self, request: web.Request) -> web.FileResponse:
+    async def _index(self, request: web.Request) -> web.StreamResponse:
+        if self.html is not None:
+            return web.Response(text=self.html, content_type="text/html")
         return web.FileResponse(self.page)
 
     async def _receive(self, request: web.Request) -> web.Response:

@@ -1,0 +1,276 @@
+"""Dashboards described by a config file: sightglass --config."""
+
+import re
+import urllib.request
+
+import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestServer
+
+from sightglass import RestSource
+from sightglass.cli import build, parser
+from sightglass.dashboard import load, render, span
+
+from .conftest import until
+
+MINIMAL = """
+[[source]]
+url = "http://127.0.0.1:1/x"
+
+[[panel]]
+ids = ["a.*"]
+"""
+
+
+def write(tmp_path, text):
+    path = tmp_path / "dashboard.toml"
+    path.write_text(text, "utf-8")
+    return path
+
+
+def test_a_minimal_config_gets_the_defaults(tmp_path):
+    dashboard = load(write(tmp_path, MINIMAL))
+    assert dashboard.title == "Dashboard"
+    assert dashboard.max_elements == 2000 and dashboard.card_width == 520
+    assert dashboard.history == 360  # the longest range, and a minute
+    (panel,) = dashboard.panels
+    assert panel.ranges == (300, 60) and panel.mode == "lines"
+    (source,) = dashboard.sources
+    assert isinstance(source, RestSource) and source.interval == 1.0
+
+
+def test_each_makes_a_panel_per_name_and_ranges_go_longest_first(tmp_path):
+    text = (
+        MINIMAL.split("[[panel]]")[0]
+        + """
+[[panel]]
+each = ["North", "South"]
+title = "Array {name}"
+ids = ["grid.{name}.value.0.*", "grid.{name}.level"]
+ranges = [60, 600, 60]
+mode = "heatmap"
+"""
+    )
+    dashboard = load(write(tmp_path, text))
+    assert [p.title for p in dashboard.panels] == ["Array North", "Array South"]
+    assert dashboard.panels[1].ids == ("grid.South.value.0.*", "grid.South.level")
+    assert dashboard.panels[0].ranges == (600, 60)
+    assert dashboard.panels[0].mode == "heatmap"
+    assert dashboard.history == 660
+
+
+def test_a_source_carries_every_rest_option(tmp_path):
+    text = """
+[[source]]
+type = "rest"
+url = "http://127.0.0.1:1/x"
+prefix = "p"
+select = "data.items"
+key = "name"
+interval = 0.25
+timeout = 2
+accept = [503]
+headers = { X-Api-Key = "abc" }
+
+[[panel]]
+ids = ["p.*"]
+"""
+    (source,) = load(write(tmp_path, text)).sources
+    (endpoint,) = source.endpoints
+    assert (endpoint.prefix, endpoint.select, endpoint.key) == (
+        "p",
+        "data.items",
+        "name",
+    )
+    assert endpoint.accept == (503,) and endpoint.interval == 0.25
+    assert source.interval == 0.25 and source.timeout == 2
+    assert source.headers == {"X-Api-Key": "abc"}
+
+
+def test_environment_variables_fill_in_a_source_so_secrets_stay_out_of_the_file(
+    tmp_path, monkeypatch
+):
+    text = MINIMAL.replace(
+        'url = "http://127.0.0.1:1/x"',
+        'url = "${HOST_URL:-http://fallback}/x"\n'
+        'headers = { Authorization = "Bearer ${TOKEN}" }',
+    )
+    path = write(tmp_path, text)
+    with pytest.raises(ValueError, match="TOKEN is not set") as error:
+        load(path)
+    assert "Bearer" not in str(error.value)
+    monkeypatch.setenv("TOKEN", "s3cret")
+    (source,) = load(path).sources
+    assert source.endpoints[0].url == "http://fallback/x"
+    assert source.headers == {"Authorization": "Bearer s3cret"}
+    monkeypatch.setenv("HOST_URL", "http://real")
+    assert load(path).sources[0].endpoints[0].url == "http://real/x"
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("this is not toml", "dashboard.toml"),
+        (MINIMAL + "\ncolour = 1", "unknown 'colour'"),
+        (
+            MINIMAL.replace('ids = ["a.*"]', 'ids = ["a.*"]\nrange = [60]'),
+            "unknown 'range'",
+        ),
+        ('[[source]]\nurl = "http://x"', "at least one .*panel"),
+        ('[[panel]]\nids = ["a"]', "at least one .*source"),
+        (MINIMAL.replace('ids = ["a.*"]', ""), "needs ids"),
+        (MINIMAL.replace('ids = ["a.*"]', "ids = []"), "needs ids"),
+        (MINIMAL + "ranges = [0]", "ranges"),
+        (MINIMAL + 'ranges = ["5 min"]', "ranges"),
+        (MINIMAL + 'mode = "pie"', "mode"),
+        (MINIMAL + "each = []", "each"),
+        (MINIMAL.replace('url = "http://127.0.0.1:1/x"', ""), "needs a url"),
+        (
+            MINIMAL.replace("[[source]]", '[[source]]\ntype = "ftp"'),
+            "type must be rest",
+        ),
+        (MINIMAL.replace("[[source]]", "[[source]]\ninterval = -1"), "interval"),
+        ("history = 10\n" + MINIMAL, "history is 10 s but a panel plots 300 s"),
+        ("title = 5\n" + MINIMAL, "title and version must be text"),
+    ],
+)
+def test_a_bad_config_says_what_is_wrong_in_one_line(tmp_path, text, message):
+    with pytest.raises(ValueError, match=message) as error:
+        load(write(tmp_path, text))
+    assert "\n" not in str(error.value)
+
+
+def test_the_page_has_a_card_per_panel_with_a_plot_per_range(tmp_path):
+    text = (
+        'title = "A & B"\n'
+        + MINIMAL.replace("a.*", 'a.*\\" onload=\\"x')
+        + 'title = "<b>"\n'
+    )
+    page = load(write(tmp_path, text)).page()
+    assert "<title>A &amp; B</title>" in page and "<h2>&lt;b&gt;</h2>" in page
+    assert 'onload="x' not in page  # a quote in an id can't open an attribute
+    assert page.count("<section>") == 1 and page.count('class="plot ') == 2
+    assert 'data-seconds="300"' in page and 'data-seconds="60"' in page
+    assert 'class="plot range-1 last"' in page  # the shortest is the biggest
+    assert "/_sightglass/dashboard.css" in page and "sightglass.js" in page
+    assert "top to bottom" in page and "5 minutes" in page and "1 minute" in page
+
+
+def test_the_page_says_which_instance_it_is(tmp_path):
+    from sightglass import __version__
+
+    path = write(tmp_path, 'title = "Plant"\nversion = "2.1 <beta>"\n' + MINIMAL)
+    dashboard = load(path)
+    assert dashboard.config == "dashboard.toml" and dashboard.version == "2.1 <beta>"
+    assert re.fullmatch(r"[0-9a-f]{8}", dashboard.digest)
+    page = dashboard.page()
+    identity = re.search(r'<small class="identity">(.*?)</small>', page).group(1)
+    assert identity.startswith("v2.1 &lt;beta&gt; \u00b7 dashboard.toml \u00b7 config ")
+    assert f"sightglass {__version__}" in identity
+    assert re.search(r"started \d{4}-\d\d-\d\d \d\d:\d\d$", identity)
+    # the fingerprint tells two instances with different files apart
+    other = write(tmp_path, 'title = "Plant"\n' + MINIMAL)
+    assert load(other).digest != dashboard.digest
+    assert "v2.1" not in load(other).page()  # no version, none shown
+
+
+def test_the_legend_is_left_out_when_panels_plot_different_ranges(tmp_path):
+    text = MINIMAL + '[[panel]]\nids = ["b"]\nranges = [30]\n'
+    assert "top to bottom" not in load(write(tmp_path, text)).page()
+
+
+def test_heatmap_panels_say_so(tmp_path):
+    page = load(write(tmp_path, MINIMAL + 'mode = "heatmap"')).page()
+    assert page.count('data-plot-mode="heatmap"') == 2
+    assert render(load(write(tmp_path, MINIMAL))).count("heatmap") == 0
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [
+        (1, "1 second"),
+        (30, "30 seconds"),
+        (60, "1 minute"),
+        (300, "5 minutes"),
+        (90, "90 seconds"),
+        (3600, "1 hour"),
+        (7200, "2 hours"),
+        (0.5, "0.5 seconds"),
+    ],
+)
+def test_span_words(seconds, text):
+    assert span(seconds) == text
+
+
+def test_the_cli_builds_the_dashboard_from_the_file(tmp_path):
+    path = write(tmp_path, 'title = "Plant"\n' + MINIMAL)
+    monitor, sources, outputs = build(parser().parse_args(["--config", str(path)]))
+    (web_output,) = outputs
+    assert monitor.max_elements == 2000 and monitor.history is not None
+    assert "<title>Plant</title>" in web_output.html and web_output.title == "Plant"
+    assert len(sources) == 1 and isinstance(sources[0], RestSource)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--rest", "http://x"],
+        ["--serial", "auto"],
+        ["--title", "T"],
+        ["--history", "5"],
+        ["--max-elements", "9"],
+        ["--terminal"],
+        ["--demo"],
+        ["--rest-interval", "2"],
+    ],
+)
+def test_the_cli_refuses_options_the_file_replaces(tmp_path, argv):
+    path = write(tmp_path, MINIMAL)
+    with pytest.raises(ValueError, match="--config describes the whole dashboard"):
+        build(parser().parse_args(["--config", str(path), *argv]))
+
+
+async def test_a_dashboard_from_a_file_serves_its_page_and_shows_the_values(
+    tmp_path, monkeypatch
+):
+    async def readings(request):
+        return web.json_response(
+            {"sensors": {"N": {"value": [[1.5, 2.5], [3.5, None]]}}}
+        )
+
+    app = web.Application()
+    app.router.add_get("/api", readings)
+    server = TestServer(app)
+    await server.start_server()
+    monkeypatch.setenv("API_URL", str(server.make_url("/api")))
+    text = """
+title = "Plant"
+[[source]]
+url = "${API_URL}"
+prefix = "p"
+select = "sensors"
+interval = 0.05
+[[panel]]
+each = ["N"]
+ids = ["p.{name}.value.*"]
+"""
+    path = write(tmp_path, text)
+    argv = ["--config", str(path), "--port", "0"]
+    monitor, sources, outputs = build(parser().parse_args(argv))
+    outputs[0].announce = False
+    monitor.start(sources=sources, outputs=outputs)
+    try:
+        await until(lambda: "p.N.value.1.0" in monitor)
+        assert "p.N.value.1.1" not in monitor  # null: no display
+        base = outputs[0].url
+
+        def get(route):
+            with urllib.request.urlopen(base + route, timeout=5) as response:
+                return response.read().decode()
+
+        assert 'data-plot="p.N.value.*"' in get("")
+        assert ".range-0" in get("_sightglass/dashboard.css")
+        assert '"p.N.value.0.1"' in get("values")
+    finally:
+        monitor.stop()
+        await server.close()

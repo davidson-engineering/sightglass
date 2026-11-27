@@ -6,6 +6,7 @@ sightglass --serial auto --csv temp,humidity
 sightglass --zmq tcp://localhost:5556
 sightglass --ads 5.12.34.56.1.1 --vars 'MAIN.*'
 sightglass --rest http://localhost:8000/metrics
+sightglass --config dashboard.toml
 sightglass --demo
 """
 
@@ -49,6 +50,8 @@ examples:
                                         poll a JSON REST endpoint (repeat --rest
                                         for more); ids start with its last path
                                         segment: metrics.process.memory_mb
+  sightglass --config dashboard.toml    a dashboard described by a file: where
+                                        the values come from and what to plot
   sightglass --demo                     simulated data, every kind of element
   sightglass --demo launch --open       the showcase: a rocket launch, live
   sightglass --demo launch --terminal   ... drawn in the terminal too
@@ -142,6 +145,12 @@ def parser() -> argparse.ArgumentParser:
         "(repeatable)",
     )
     inputs.add_argument(
+        "--config",
+        metavar="FILE",
+        help="a dashboard described by a TOML file: its sources, and the "
+        "panels that plot them (see the README); replaces the other inputs",
+    )
+    inputs.add_argument(
         "--demo",
         nargs="?",
         const="elements",
@@ -204,6 +213,8 @@ def parser() -> argparse.ArgumentParser:
 
 def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]]:
     """The monitor, sources and outputs the arguments describe."""
+    if args.config:
+        return config_build(args)
     sources: list[Source] = []
     if args.demo:
         from . import demo
@@ -271,6 +282,53 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
     return monitor, sources, outputs
 
 
+def config_build(
+    args: argparse.Namespace,
+) -> tuple[Monitor, list[Source], list[Output]]:
+    """The dashboard a config file describes, on the page the file's panels make."""
+    from .dashboard import load
+
+    elsewhere = {
+        "--serial": args.serial,
+        "--csv": args.csv,
+        "--json": args.json,
+        "--binary": args.binary,
+        "--zmq": args.zmq,
+        "--pull": args.pull,
+        "--ads": args.ads,
+        "--vars": args.vars,
+        "--allow-writes": args.allow_writes,
+        "--rest": args.rest,
+        "--rest-interval": args.rest_interval != 1.0,
+        "--rest-header": args.rest_header,
+        "--demo": args.demo,
+        "--terminal": args.terminal,
+        "--title": args.title != "Monitor",
+        "--history": args.history is not None,
+        "--max-elements": args.max_elements != 500,
+    }
+    if given := [flag for flag, value in elsewhere.items() if value]:
+        raise ValueError(
+            f"--config describes the whole dashboard; drop {', '.join(given)} "
+            "(sources, title, history and limits are set in the file)"
+        )
+    from . import WebDashboard
+
+    dashboard = load(args.config)
+    monitor = Monitor(max_elements=dashboard.max_elements, history=dashboard.history)
+    web = WebDashboard(
+        html=dashboard.page(),
+        host=args.host,
+        port=args.port,
+        title=dashboard.title,
+        theme=args.theme,
+        token=args.token,
+        stale_after=args.stale_after,
+        open_browser=args.open,
+    )
+    return monitor, dashboard.sources, [web]
+
+
 def launch(args: argparse.Namespace) -> None:
     """The launch demo: its own page and data, until Ctrl+C."""
     _own_page_demo(args)
@@ -310,6 +368,7 @@ def _own_page_demo(args: argparse.Namespace, *, terminal: bool = True) -> None:
         "--binary": args.binary,
         "--zmq": args.zmq,
         "--pull": args.pull,
+        "--config": args.config,
         "--ads": args.ads,
         "--rest": args.rest,
         "--vars": args.vars,

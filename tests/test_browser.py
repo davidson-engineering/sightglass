@@ -483,6 +483,52 @@ async def test_plot_draws_lowest_and_highest_value_over_the_lines(page, serve):
     ]
 
 
+async def test_a_config_dashboard_wraps_its_cards_and_fills_the_screen(
+    page, serve, tmp_path
+):
+    """Five panels at 1920 x 1080: three cards, then two that share the row, all
+    of it on one screen with nothing to scroll; every plot has its values."""
+    from sightglass.dashboard import load
+
+    config = tmp_path / "dashboard.toml"
+    config.write_text(
+        """
+[[source]]
+url = "http://127.0.0.1:1/x"
+[[panel]]
+each = ["a", "b", "c", "d", "e"]
+title = "{name}"
+ids = ["p.{name}"]
+ranges = [30, 10]
+"""
+    )
+    monitor = Monitor(history=60)
+    monitor.update({f"p.{name}": 1.5 for name in "abcde"})
+    await page.set_viewport_size({"width": 1920, "height": 1080})
+    await page.goto(serve(None, monitor, html=load(config).page()))
+    plots = page.locator("[data-plot]")
+    assert await plots.count() == 10
+    for i in range(10):
+        await expect(plots.nth(i)).to_have_attribute("data-plot-signals", "1")
+    boxes = await page.evaluate(
+        "[...document.querySelectorAll('section')].map(e => {"
+        " const r = e.getBoundingClientRect();"
+        " return [r.left, r.top, r.right, r.bottom] })"
+    )
+    rows = {}
+    for left, top, right, bottom in boxes:
+        rows.setdefault(round(top), []).append((left, right, bottom))
+    first, second = (rows[top] for top in sorted(rows))
+    assert (len(first), len(second)) == (3, 2)
+    assert second[0][1] - second[0][0] > 1.4 * (first[0][1] - first[0][0])
+    assert abs(first[-1][1] - second[-1][1]) < 2  # both rows reach the right edge
+    assert max(box[2] for row in rows.values() for box in row) <= 1080
+    assert await page.evaluate(
+        "(() => { const g = document.querySelector('.grid');"
+        " return g.scrollHeight <= g.clientHeight + 1 })()"
+    )
+
+
 # Records the text each plot draws, by the id of its element, in window.labels.
 RECORD_LABELS = """
 window.labels = {};
