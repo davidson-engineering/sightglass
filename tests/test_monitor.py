@@ -428,3 +428,32 @@ def test_start_takes_every_monitor_option():
         assert monitor.history is not None
     finally:
         monitor.stop()
+
+
+def test_stop_after_the_monitor_ended_by_itself_is_quick_and_leaves_nothing():
+    """A monitor whose outputs all return ends by itself, and asyncio.run then
+    shuts its loop down. A stop() in that window must not hand the loop a flush
+    it will never finish: that blocked stop() for its whole timeout and left a
+    task pending when the loop closed ("Task was destroyed but it is pending")."""
+    import gc
+
+    ended = threading.Event()
+
+    class Brief:
+        async def run(self, monitor):
+            # Work left in the default executor keeps asyncio.run shutting down
+            # (the loop still running) for half a second after this returns.
+            asyncio.get_running_loop().run_in_executor(None, time.sleep, 0.5)
+            ended.set()
+
+        async def flush(self, monitor):
+            await asyncio.sleep(1)  # longer than the shutdown has left
+
+    monitor = Monitor()
+    monitor.start(outputs=[Brief()])
+    assert ended.wait(2)
+    time.sleep(0.05)  # the main task is done; the loop is shutting down
+    began = time.perf_counter()
+    monitor.stop(timeout=2)
+    assert time.perf_counter() - began < 1
+    gc.collect()  # a task left pending would warn here, failing the test

@@ -168,6 +168,7 @@ class Monitor:
         self._loop_thread: int | None = None
         self._thread: threading.Thread | None = None
         self._task: asyncio.Task[None] | None = None
+        self._stopping: asyncio.Task[None] | None = None  # stop()'s flush, kept alive
         self._outputs: list[Output] = []
         self._writers: list[Any] = []  # running sources that can write
         self._feeds: list[Any] = []  # running sources' polling figures
@@ -572,21 +573,35 @@ class Monitor:
     def stop(self, timeout: float = 5) -> None:
         """Stop a monitor started with :meth:`start`: deliver the latest values
         to the outputs, shut them down and wait for the thread to finish."""
-        thread, task, loop = self._thread, self._task, self._loop
+        thread, loop = self._thread, self._loop
         if thread is None:
             return
         if threading.get_ident() == self._loop_thread:
             raise RuntimeError("stop() can't be called from the monitor's own thread")
         atexit.unregister(self.stop)
-        if task is not None and loop is not None and loop.is_running():
-            with contextlib.suppress(Exception):  # stopping anyway
-                asyncio.run_coroutine_threadsafe(self._flush_outputs(), loop).result(
-                    timeout
-                )
-            with contextlib.suppress(RuntimeError):  # already finished
-                loop.call_soon_threadsafe(task.cancel)
-        thread.join(timeout)
+        if loop is not None:
+            # A plain callback, not a coroutine: the loop may already be shutting
+            # down, and then it may never run, which is fine, as there is
+            # nothing left to stop. A coroutine handed over then would be left
+            # pending when the loop closes, and waiting for it would block.
+            with contextlib.suppress(RuntimeError):  # the loop has closed
+                loop.call_soon_threadsafe(self._stop_on_loop, timeout)
+        thread.join(2 * timeout)  # the flush, then the outputs shutting down
         self._thread = None
+
+    def _stop_on_loop(self, timeout: float) -> None:
+        """On the loop's thread: deliver the latest values, then cancel the
+        main task, if it is still running."""
+        task = self._task
+        if task is None or task.done():
+            return  # ended by itself: no outputs left to flush to
+
+        async def flush_then_cancel() -> None:
+            with contextlib.suppress(Exception):  # stopping anyway
+                await asyncio.wait_for(self._flush_outputs(), timeout)
+            task.cancel()
+
+        self._stopping = asyncio.get_running_loop().create_task(flush_then_cancel())
 
     async def _flush_outputs(self) -> None:
         for output in self._outputs:
