@@ -17,6 +17,7 @@ from playwright.async_api import async_playwright, expect
 from sightglass import (
     IndicatorLamp,
     Monitor,
+    ProcessSource,
     ProgressBar,
     RangeBar,
     Sparkline,
@@ -208,6 +209,22 @@ async def test_themes_switch_and_are_remembered(page, serve):
     await page.reload()  # the viewer's choice beats the dashboard's default
     await expect(html).to_have_attribute("data-theme", "classic")
     await expect(html).to_have_attribute("data-crt", "off")
+
+
+async def test_generic_page_shows_the_programs_own_resources(page, serve):
+    """ProcessSource with no other code: CPU, memory in MB, threads, uptime."""
+    monitor = Monitor()
+    source = ProcessSource(interval=0.1)
+    await page.goto(serve(None, monitor, sources=[source]))
+    memory = page.locator(".row", has_text="Memory")
+    await expect(memory).to_contain_text(re.compile(r"\d+\.\d MB"))
+    await expect(page.locator(".row", has_text="CPU")).to_contain_text(
+        re.compile(r"\d+\.\d ?%")
+    )
+    await expect(page.locator(".row", has_text="Threads")).to_contain_text(
+        re.compile(r"\d")
+    )
+    await expect(page.locator(".row", has_text="Uptime")).to_contain_text(" s")
 
 
 async def test_generic_page_offers_the_terminal_theme(page, serve):
