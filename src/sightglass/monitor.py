@@ -546,6 +546,13 @@ class Monitor:
             await self._start_outputs(outputs)
             ready.set()
             await self._run(sources, outputs)
+            if not outputs:
+                # The program reads the monitor itself, so there is no output
+                # whose end would end it: the loop applies what other threads
+                # send until stop(). Ending as soon as the sources had (at
+                # once, with none) dropped values handed over while the loop
+                # closed, and applied later ones on the sender's thread.
+                await asyncio.Event().wait()
 
         def thread() -> None:
             try:
