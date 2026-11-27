@@ -168,22 +168,23 @@ async def test_a_big_reply_is_parsed_in_a_worker_thread_and_a_small_one_inline(
     import threading
 
     real = rest.extract
-    where: list[bool] = []
+    on_loop: dict[str, bool] = {}  # endpoint path: parsed on the loop's thread
 
     def extract(document, endpoint):
-        where.append(threading.current_thread() is threading.main_thread())
+        path = endpoint.url.rpartition("/")[2]
+        on_loop.setdefault(path, threading.current_thread() is threading.main_thread())
         return real(document, endpoint)
 
     monkeypatch.setattr(rest, "extract", extract)
     monitor = Monitor(max_elements=COUNT + 10)
     consume(monitor, RestSource(str(server.make_url("/big")), interval=0.5))
-    await until(lambda: where, within=20)
-    assert where[0] is False  # about 1 MB: off the loop
+    await until(lambda: "big" in on_loop, within=20)
+    assert on_loop["big"] is False  # about 1 MB: off the loop
 
-    where.clear()
+    # /big keeps polling meanwhile, so look at /small's own parse.
     consume(monitor, RestSource(str(server.make_url("/small")), interval=0.5))
-    await until(lambda: where, within=10)
-    assert where[0] is True  # a few bytes: not worth a thread
+    await until(lambda: "small" in on_loop, within=10)
+    assert on_loop["small"] is True  # a few bytes: not worth a thread
 
 
 def test_a_feed_reports_polls_a_second_and_how_long_they_took():
