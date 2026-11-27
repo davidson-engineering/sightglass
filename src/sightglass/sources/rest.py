@@ -134,6 +134,20 @@ class RestSource:
             raise Failed(str(error) or type(error).__name__) from None
         return await parse(len(body), _document, body, endpoint)
 
+    async def snapshot(self) -> Update:
+        """Every endpoint polled once: the ids they make, with their values.
+        Raises :class:`Failed`, naming the URL, if one can't be read."""
+        values: dict[str, Any] = {}
+        async with aiohttp.ClientSession(
+            headers=self.headers, timeout=aiohttp.ClientTimeout(total=self.timeout)
+        ) as session:
+            for endpoint in self.endpoints:
+                try:
+                    values.update(await self._fetch(session, endpoint))
+                except Failed as error:
+                    raise Failed(f"{endpoint.url}: {error}") from None
+        return values
+
     def __repr__(self) -> str:
         urls = ", ".join(e.url for e in self.endpoints)
         return f"RestSource({urls})"

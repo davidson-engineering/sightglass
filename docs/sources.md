@@ -96,6 +96,10 @@ Corrupt frames are skipped and decoding resumes at the next `0xAA`.
 - **Ids:** nested objects become dotted ids, and lists of objects are keyed by
   their `id` field. `Endpoint(url, prefix=, select=, key=, interval=,
   accept=)` tunes one URL; `headers={...}` sends an API key or bearer token.
+- **Listing the ids:** `sightglass --rest URL --list` polls once, prints each
+  id with its value and exits (non-zero, one line, if the URL can't be read).
+  `--list` works with the other sources too (it prints the first message's
+  ids) and with `--config FILE`.
 - **Invalid data is blanked:** `null`, or an endpoint that can't be reached,
   blanks that id (a gap in a plot) rather than leaving its last value showing.
 - **A down endpoint** is logged once and retried.
