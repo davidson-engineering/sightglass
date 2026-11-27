@@ -25,9 +25,20 @@
 // rows, each pixel shows the strongest of the cells it covers. Lines show
 // the values.
 //
+// The value axis has a label at round values (data-plot-ticks lists them),
+// each with data-plot-units after it ("MB"); a value of 10,000 or more is
+// shortened with k, M or G. data-plot-scale multiplies the values first, so
+// a plot of bytes can be shown in MB (data-plot-scale="0.00000095367431640625").
+//
+// Two to eight ids are drawn each in its own colour, in a fixed order whose
+// steps suit the plot's background (light or dark), with a legend naming
+// them (data-plot-legend), less the part of the name they share. One id, or
+// more than eight, are all drawn in the element's color: a crowd of lines is
+// read as one shape, and nine colours can't all be told apart.
+//
 // The element gets data-plot-signals (how many ids it draws) and
-// data-plot-range (the lowest and highest value in view) once points arrive,
-// and data-plot-error with the reason when it can't get any.
+// data-plot-range (the lowest and highest value in view, scaled) once points
+// arrive, and data-plot-error with the reason when it can't get any.
 
 const MIN_INTERVAL = 50; // ms between requests at most: 20 a second
 const RETRY = 1000; // ms after a failed request
@@ -38,7 +49,21 @@ const TICKS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600]; // s
 const USUAL = 2;
 const FULL = 4;
 const MARKS = 400; // at most, the strongest first
-const RANGE_SIZE = 1.4; // the lowest and highest value, in times the font size
+const TICK_ROOM = 3; // the value axis's labels: at least this many lines of text apart
+const STEPS = [1, 2, 2.5, 5, 10]; // round steps between them, times a power of ten
+const PREFIXES = ["", "k", "M", "G", "T", "P"];
+// The colours of 2 to 8 ids, in this order: [on a light background, on a
+// dark one]. Validated for colour-blind and normal vision, adjacent pairs.
+const PALETTE = [
+  ["#257de0", "#338ced"], // blue
+  ["#f47230", "#e76624"], // orange
+  ["#00b894", "#00a888"], // aqua
+  ["#f2a600", "#d28e05"], // yellow
+  ["#ee7fac", "#e24d8b"], // magenta
+  ["#008a17", "#0aac23"], // green
+  ["#6a4ce2", "#9887ef"], // violet
+  ["#ec4647", "#eb6263"], // red
+];
 
 const running = new WeakSet();
 
@@ -161,12 +186,17 @@ function draw(plot) {
   const axis = Math.round(parseFloat(style.fontSize) * 1.6); // the time labels
   g.textBaseline = "middle";
 
+  const scale = Number(el.dataset.plotScale) || 1;
+  const ends = (point) => {
+    const [a, b] = Array.isArray(point) ? point : [point, point];
+    return scale > 0 ? [a * scale, b * scale] : [b * scale, a * scale];
+  };
   let low = Infinity;
   let high = -Infinity;
   for (const series of plot.series.values()) {
     for (const point of series) {
       if (point == null) continue;
-      const [a, b] = Array.isArray(point) ? point : [point, point];
+      const [a, b] = ends(point);
       if (a < low) low = a;
       if (b > high) high = b;
     }
@@ -211,6 +241,18 @@ function draw(plot) {
   g.moveTo(0, lines + 0.5);
   g.lineTo(width, lines + 0.5);
   g.stroke();
+  const ticks = heat ? null : valueTicks(low, high, pad, lines, parseFloat(style.fontSize));
+  if (ticks) {
+    g.globalAlpha = 0.12;
+    g.beginPath();
+    for (const tick of ticks.values) {
+      const at = Math.round(y(tick)) + 0.5;
+      g.moveTo(0, at);
+      g.lineTo(width, at);
+    }
+    g.stroke();
+    el.dataset.plotTicks = ticks.values.map((v) => ticks.text(v)).join(" ");
+  }
   g.globalAlpha = 0.7;
   for (let ago = 0; ago <= seconds; ago += tick) {
     const at = x(plot.end - ago);
@@ -220,16 +262,21 @@ function draw(plot) {
   }
   if (heat) return;
 
-  // The lines, as one path: each point from its lowest to its highest value.
+  // The lines: each point from its lowest to its highest value. A few ids
+  // get a colour each; otherwise they are one path in the element's color.
+  const ids = [...plot.series.keys()];
+  const colours = ids.length >= 2 && ids.length <= PALETTE.length;
+  const step = dark(background(el)) ? 1 : 0;
   g.globalAlpha = 1;
-  g.lineWidth = 1;
+  g.lineWidth = colours ? 2 : 1;
   g.lineJoin = "round";
   g.save();
   g.beginPath();
   g.rect(0, 0, width, lines); // the newest point may run past "now"
   g.clip();
   g.beginPath();
-  for (const series of plot.series.values()) {
+  ids.forEach((id, n) => {
+    const series = plot.series.get(id);
     let pen = false;
     for (let i = 0; i < series.length; i++) {
       const point = series[i];
@@ -238,30 +285,119 @@ function draw(plot) {
         continue;
       }
       const at = x(plot.start + (i + 0.5) * plot.step);
-      const [a, b] = Array.isArray(point) ? point : [point, point];
+      const [a, b] = ends(point);
       if (pen) g.lineTo(at, y(a));
       else g.moveTo(at, y(a));
       if (b !== a) g.lineTo(at, y(b));
       pen = true;
     }
-  }
-  g.stroke();
+    if (colours) {
+      g.strokeStyle = PALETTE[n][step];
+      g.stroke();
+      g.beginPath();
+    }
+  });
+  if (!colours) g.stroke();
   g.restore();
 
-  // The lowest and highest value, over the lines at full strength, bold and
-  // outlined in the page's background, so no line can hide them.
-  g.font = `bold ${parseFloat(style.fontSize) * RANGE_SIZE}px ${style.fontFamily}`;
-  g.textAlign = "left";
-  g.lineWidth = Math.max(parseFloat(style.fontSize) / 4, 3);
+  // Over the lines, outlined in the page's background so no line hides them:
+  // the value labels at the left, then the legend at the top right.
+  const size = parseFloat(style.fontSize);
+  g.lineWidth = Math.max(size / 4, 3);
   g.strokeStyle = background(el);
-  for (const [text, baseline, at] of [
-    [format(high), "top", 2],
-    [format(low), "bottom", lines - 2],
-  ]) {
-    g.textBaseline = baseline;
+  g.fillStyle = style.color;
+  g.textAlign = "left";
+  g.textBaseline = "middle";
+  const units = el.dataset.plotUnits ?? "";
+  for (const tick of ticks.values) {
+    const text = ticks.label(tick, units);
+    const at = Math.min(Math.max(y(tick), size * 0.6), lines - size * 0.6);
     g.strokeText(text, 3, at);
     g.fillText(text, 3, at);
   }
+  if (colours) legend(g, el, ids, step, width, size);
+  else delete el.dataset.plotLegend;
+}
+
+// Round values for the value axis, about TICK_ROOM lines of text apart, all
+// written with the same decimals: [1.5, 2.0, 2.5], or [50M, 100M].
+function valueTicks(low, high, pad, lines, size) {
+  const wanted = Math.max(Math.floor(lines / (size * TICK_ROOM)), 2);
+  const raw = (high - low) / wanted;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const step = STEPS.map((s) => s * power).find((s) => s >= raw * (1 - 1e-9));
+  const values = [];
+  for (let k = Math.ceil((low - pad) / step); k * step <= high + pad; k++) {
+    values.push(Math.abs(k) < 1e-9 ? 0 : k * step);
+  }
+  const biggest = Math.max(...values.map(Math.abs));
+  const thousands = biggest >= 1e4 ? Math.min(Math.floor(Math.log10(biggest) / 3), 5) : 0;
+  const divisor = 1000 ** thousands;
+  const prefix = PREFIXES[thousands];
+  let decimals = 0;
+  const scaled = step / divisor;
+  while (decimals < 10 && Math.abs(Math.round(scaled * 10 ** decimals) - scaled * 10 ** decimals) > 1e-6) {
+    decimals++;
+  }
+  const number = (v) => (v / divisor).toFixed(decimals).replace("-", "−");
+  return {
+    values,
+    text: (v) => number(v) + prefix,
+    label: (v, units) =>
+      units ? `${number(v)} ${prefix}${units}` : number(v) + prefix,
+  };
+}
+
+// The legend: a swatch and a name per id, at the top right, the names less
+// the dotted part they all share ("jobs.queue jobs.p95" -> "queue", "p95").
+// Ids that don't fit are counted: "+3".
+function legend(g, el, ids, step, width, size) {
+  const names = shortNames(ids);
+  el.dataset.plotLegend = names.join(" ");
+  const swatch = size;
+  const gap = size * 0.4;
+  const widths = names.map((name) => swatch + gap + g.measureText(name).width);
+  let shown = names.length;
+  const total = (count) =>
+    widths.slice(0, count).reduce((sum, w) => sum + w + size, 0) +
+    (count < names.length ? g.measureText(`+${names.length - count}`).width : 0);
+  while (shown > 1 && total(shown) > width * 0.7) shown--;
+  let at = width - total(shown); // each name's trailing gap is the right margin
+  const middle = size * 0.9;
+  for (let n = 0; n < shown; n++) {
+    g.fillStyle = PALETTE[n][step];
+    g.fillRect(at, middle - 1.5, swatch, 3);
+    at += swatch + gap;
+    g.fillStyle = getComputedStyle(el).color;
+    g.strokeText(names[n], at, middle);
+    g.fillText(names[n], at, middle);
+    at += widths[n] - swatch - gap + size;
+  }
+  if (shown < names.length) {
+    const more = `+${names.length - shown}`;
+    g.strokeText(more, at, middle);
+    g.fillText(more, at, middle);
+  }
+}
+
+function shortNames(ids) {
+  const parts = ids.map((id) => id.split("."));
+  let shared = 0;
+  while (
+    parts.every((p) => p.length > shared + 1 && p[shared] === parts[0][shared])
+  ) {
+    shared++;
+  }
+  return parts.map((p) => p.slice(shared).join("."));
+}
+
+// Whether a CSS color is dark enough for the palette's dark steps.
+function dark(color) {
+  const [r, g, b] = rgb(color).map((c) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.18;
 }
 
 function drawHeat(g, plot, from, seconds, width, lines, ratio, color) {
