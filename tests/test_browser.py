@@ -15,6 +15,7 @@ import pytest
 from playwright.async_api import async_playwright, expect
 
 from sightglass import (
+    Coordinate,
     IndicatorLamp,
     LogMonitor,
     Monitor,
@@ -314,6 +315,29 @@ async def test_generic_page_draws_declared_and_new_elements(page, serve):
     await expect(page.locator(".row", has_text="Job")).to_contain_text("25.0%")
     await expect(page.locator(".row", has_text="status")).to_contain_text("ok")
     await expect(page.locator("#connection")).to_have_text("Live")
+
+
+async def test_generic_page_shows_units_once_for_each_element(page, serve):
+    monitor = Monitor()
+    monitor.add(
+        TextElement("uptime", label="Uptime", units="s"),
+        Sparkline("cpu", label="Cpu", units="%"),
+        RangeBar("temp", label="Temp", units="degC"),
+        ProgressBar("job", label="Job"),
+        Coordinate("pos", label="Pos", axes=("x",), units="mm"),
+    )
+    await page.goto(serve(None, monitor))
+    monitor.update({"uptime": 7, "cpu": 8.8, "temp": 50, "job": 25, "pos": {"x": 1}})
+    for label, text in [
+        ("Uptime", "7 s"),
+        ("Cpu", "8.8 %"),
+        ("Temp", "50.00 degC"),
+        ("Job", "25.0%"),
+        ("Pos", "X +1.0000 mm"),
+    ]:
+        row = page.locator(".row", has_text=label)
+        await expect(row).to_contain_text(text)
+        assert (await row.inner_text()).count(text.split()[-1]) == 1
 
 
 async def test_log_binding_marks_each_lines_level(page, serve):

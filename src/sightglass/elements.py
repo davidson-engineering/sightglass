@@ -115,16 +115,16 @@ class TextElement(Element):
 
     @property
     def text(self) -> str:
-        return (
+        text = (
             self.format.format(self.value) if self.format else default_text(self.value)
         )
+        return f"{text} {self.units}" if self.units and text else text
 
     def to_json(self) -> JSON:
         return self.text
 
     def render(self, width: int) -> str:
-        units = f" {self.units}" if self.units else ""
-        value = f"{styled(self.text, self.style)}{units}"
+        value = styled(self.text, self.style)
         if self.caption:  # the caller chose the layout
             return f"{self.caption}{value}"
         return f"{fit(self.label, self.label_width)} {value}"
@@ -656,15 +656,17 @@ class Coordinate(Element):
 
     def _text(self, axis: str) -> str:
         value = self.values[axis]
-        return NO_VALUE if value is None else self.format.format(value)
+        if value is None:
+            return NO_VALUE
+        text = self.format.format(value)
+        return f"{text} {self.units}" if self.units else text
 
     def to_json(self) -> JSON:
         return {axis: self._text(axis) for axis in self.axes}
 
     def render(self, width: int) -> str:
-        units = f" {self.units}" if self.units else ""
         parts = [
-            f"{axis.upper()}: {styled(self._text(axis), self.style)}{units}"
+            f"{axis.upper()}: {styled(self._text(axis), self.style)}"
             for axis in self.axes
         ]
         return f"{self.label} " + " ".join(parts)

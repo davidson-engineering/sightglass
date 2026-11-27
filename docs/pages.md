@@ -61,7 +61,8 @@ element `data-stale="true"` while its value hasn't arrived for that long, so a
 page fed by several sources can show which one has gone quiet
 (`stale_after` does this for the page as a whole).
 
-Object values are flattened, so a `RangeBar` binds as `<id>.text` and
+A value's text includes its units (`21.5 °C`), whatever the element, so a
+page binds it and adds nothing. Object values are flattened, so a `RangeBar` binds as `<id>.text` and
 `<id>.ratio`, a `Sparkline` as `<id>.text` and `<id>.values`, and a
 `MachineState` as `<id>.<state>`. `instruments.css` provides the segment display
 (`.lcd`, `.lcd-field`) and LED (`.led`, `.led-red`, `.led-amber`) styles.
