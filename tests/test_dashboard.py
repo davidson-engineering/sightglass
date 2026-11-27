@@ -1,6 +1,7 @@
 """Dashboards described by a config file: sightglass --config."""
 
 import re
+import time
 import urllib.request
 
 import pytest
@@ -124,7 +125,6 @@ def test_environment_variables_fill_in_a_source_so_secrets_stay_out_of_the_file(
             "unknown 'rnge'",
         ),
         ('[[source]]\nurl = "http://x"', "at least one .*panel"),
-        ('[[panel]]\nids = ["a"]', "at least one .*source"),
         (MINIMAL.replace('ids = ["a.*"]', ""), "needs ids"),
         (MINIMAL.replace('ids = ["a.*"]', "ids = []"), "needs ids"),
         (MINIMAL + "range = 0", "range in .* above 0"),
@@ -196,6 +196,53 @@ def test_the_cli_builds_the_dashboard_from_the_file(tmp_path):
     assert monitor.max_elements == 2000 and monitor.history is not None
     assert "<title>Plant</title>" in web_output.html and web_output.title == "Plant"
     assert len(sources) == 1 and isinstance(sources[0], RestSource)
+
+
+PANELS_ONLY = """
+title = "App"
+[[panel]]
+ids = ["app.cpu"]
+range = 60
+"""
+
+
+def test_a_file_of_panels_alone_is_fed_by_post_update(tmp_path, capsys):
+    path = write(tmp_path, PANELS_ONLY)
+    assert load(path).sources == []
+    _, sources, (web_output,) = build(
+        parser().parse_args(["--config", str(path), "--port", "0"])
+    )
+    assert sources == [] and "<title>App</title>" in web_output.html
+    assert "POST /update" in capsys.readouterr().err  # says where values come from
+
+
+def test_python_serves_a_config_dashboard_and_feeds_it(tmp_path, capsys):
+    monitor = load(write(tmp_path, PANELS_ONLY)).start(port=0)
+    try:
+        (url,) = re.findall(r"http://\S+", capsys.readouterr().err)
+
+        def get(route):
+            with urllib.request.urlopen(url + route, timeout=5) as response:
+                return response.read().decode()
+
+        assert 'data-plot="app.cpu"' in get("")
+        monitor.set("app.cpu", 12.5)
+        deadline = time.monotonic() + 3
+        while "12.5" not in get("history?id=app.cpu&seconds=5"):
+            assert time.monotonic() < deadline, "the value never reached the history"
+            time.sleep(0.05)
+    finally:
+        monitor.stop()
+
+
+def test_the_where_of_a_config_dashboard_comes_from_the_caller(tmp_path):
+    dashboard = load(write(tmp_path, 'theme = "terminal"\n' + PANELS_ONLY))
+    web_output = dashboard.web(port=0, token="t", debug=True, announce=False)
+    assert (web_output.port, web_output.token, web_output.debug) == (0, "t", True)
+    assert (web_output.theme, web_output.title) == ("terminal", "App")
+    monitor = dashboard.monitor()
+    assert monitor.history is not None
+    assert monitor.history.seconds == dashboard.history == 60 + 300  # + secondary
 
 
 def test_a_config_dashboard_keeps_history_only_for_what_it_plots(tmp_path):
