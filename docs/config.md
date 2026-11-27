@@ -1,0 +1,195 @@
+# Dashboards from a config file
+
+`sightglass --config dashboard.toml` builds a whole dashboard from a file: the
+sources, and the panels that show them. There is no page to write, and the file
+can be kept apart from sightglass, one per dashboard.
+
+```toml
+title = "Plant"
+
+[[source]]
+type = "rest"                                  # poll a JSON API with GET
+url = "${API_URL:-http://localhost:8000/api/readings}"
+prefix = "plant"                               # ids start "plant."
+select = "sensors"                             # start from this place in the JSON
+interval = 0.5                                 # seconds between polls
+
+[[panel]]                                      # a trend, a panel per name
+each = ["North", "South"]
+title = "{name}"
+ids = ["plant.{name}.value.*"]                 # * stands for any characters
+range = 60                                     # the primary plot: the last minute
+secondary_range = 300                          # the secondary, above it: 5 minutes
+```
+
+A mistake in the file, such as an unknown key, is reported in one clear line.
+[examples/](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#10-a-dashboard-from-a-config-file-a-rest-api)
+has three config dashboards to copy: a REST API, a PLC and an InfluxDB
+database.
+
+## The words the config uses
+
+The code, the config and these docs all use these words:
+
+| Term | Meaning |
+| --- | --- |
+| **dashboard** | one page, described by one config file; run one `sightglass --config` per dashboard |
+| **source** | where values come from: a `[[source]]` of a `type` (`rest`, `ads`, `zmq`, `serial`, `influxdb`) |
+| **id** | a value's name, such as `plant.North.value.0.1`; sources make them and panels show them |
+| **section** | a titled group of panels: `[[section]]`, with its panels as `[[section.panel]]` |
+| **panel** | one tile of the page: a `[[panel]]` of a `type` (`trend`, `value`, `lamp`, `gauge`) |
+| **plot** | what a `trend` panel draws, from the dashboard's history: a **primary** plot and, optionally, a **secondary** one |
+| **range** | the seconds of history a plot covers |
+| **element** | the monitor's own display model (`TextElement`, `RangeBar`, ...) that hand-written pages bind; a panel is not one, but a `value` panel with `precision` declares one |
+
+## How the page is laid out
+
+The page is a dark, large-text layout for reading from across a room. It is
+one screen with nothing to scroll.
+
+- **Sections** stack from top to bottom, each with its heading if it has a
+  `title`. Panels written at the top level, with no `[[section]]`, are one
+  section without a heading.
+- **Height:** a section asks for height by its tallest panel, so a row of
+  readings is short and a row of plots is tall.
+- **Width:** panels wrap like Grafana's. Each is at least `panel_width`
+  pixels wide (520 by default, and readings 60% of that), so the count per row
+  follows the screen, and the last row's panels grow to fill it.
+
+## Panels: what each tile shows
+
+| `type` | Shows | Keys |
+| --- | --- | --- |
+| `trend` (the default) | `ids` against time: a primary plot and, optionally, a secondary one over another range | `ids` (id patterns, `*` for any characters), `mode` (`"lines"`, or `"heatmap"`, a row per id, for hundreds of ids), and the plots' settings below |
+| `value` | one id's current value as large text | `id`, `units`, `precision` (decimals) |
+| `lamp` | one id as a light: on for `true`, non-zero and `"on"`, off otherwise | `id` |
+| `gauge` | one id as a bar between a minimum and a maximum, with the value above it | `id`, `min` (default 0), `max` (default 100), `units`, `precision` |
+
+Every panel also takes `title`, and `each`: a list of names that makes one
+panel per name, with `{name}` replaced in the title and in `id` or `ids`. A
+`trend` takes patterns, because it plots many; the others take one exact
+`id`. Two panels may show the same id, but not to different `precision`s,
+because the monitor formats an id once.
+
+An invalid value (`null` from a REST API, a series InfluxDB has stopped
+getting points for, a source that went down) is never left showing: a plot has
+a gap, a `value` is blank, a `lamp` is off and a `gauge` is empty.
+
+```toml
+[[section]]
+title = "Now"
+
+[[section.panel]]
+type = "gauge"
+title = "Pressure"
+id = "plc.pressure"
+units = "bar"
+max = 10
+
+[[section.panel]]
+type = "lamp"
+each = ["A", "B"]
+title = "Pump {name}"
+id = "plc.pump{name}.running"
+
+[[section]]
+title = "Last 5 minutes"
+
+[[section.panel]]
+ids = ["plc.pressure"]
+range = 300
+secondary = false      # just the one plot
+```
+
+### A trend's two plots
+
+The primary is the plot to read; the secondary is context, drawn smaller. A
+plot's colour follows its role, so the primary is yellow and the secondary
+blue wherever they are placed.
+
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `range` | seconds of history the primary plot covers | `60` |
+| `secondary` | whether there is a secondary plot (`true` or `false`) | `true` |
+| `secondary_range` | seconds the secondary plot covers | `300` |
+| `secondary_ratio` | the secondary plot's height over the primary's | `0.5` |
+| `first` | which plot is on top, `"secondary"` or `"primary"` | `"secondary"` |
+
+With `secondary = false`, the other three secondary settings are an error.
+
+### What panels cost
+
+The dashboard keeps history only for the ids its `trend` panels plot. A
+dashboard of plots alone opens no live-values connection, so a source with
+thousands of ids costs little more than polling it. A `value`, `lamp` or
+`gauge` needs the live connection, which sends every id the source makes to the
+page, so keep those dashboards to sources with a few hundred ids.
+
+## Settings at the top of the file
+
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `title` | the page heading | `"Dashboard"` |
+| `version` | a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time | none |
+| `theme` | the look unless a viewer switches: `"classic"` or `"terminal"` | `"classic"` |
+| `stale_after` | seconds without new data before values dim | never |
+| `history` | seconds of values kept for plots | the longest `range`, and a minute |
+| `max_elements` | the most ids shown | `2000` |
+| `panel_width` | the least width of a panel, in pixels | `520` |
+| `title_bar` | where the title bar goes: `"top"` or `"bottom"` | `"top"` |
+
+History is on by default here, unlike `sightglass --history`, because trend
+panels need it.
+
+## What the command line still sets
+
+The file says what the dashboard is; the command line says where and how it
+runs. With `--config`, only `--host`, `--port`, `--token`, `--open`, `--debug`
+and `-v` are taken. Any other option is refused with a message naming it.
+
+## Sources and their keys
+
+A dashboard takes any number of sources, of any mix, and a panel can show
+every id they make. [Sources](sources.md) describes each kind in full.
+
+| `type` | Keys |
+| --- | --- |
+| `rest` | `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see [REST APIs](sources.md#rest-apis) |
+| `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC: `write = true` on a variable is refused here (an interface file's marks are left unused) |
+| `zmq` | `endpoint`, `pattern` (`"sub"` or `"pull"`), `bind`, and a `decoder` |
+| `serial` | `port` (default `"auto"`), `baudrate`, and a `decoder` |
+| `influxdb` | InfluxDB 2.x: `url`, `org`, `token`, and a `bucket` (narrowed by `measurement`, `fields`, `tags`) or a Flux `query`; `window`, `id_from`, `prefix`, `interval`, `timeout`: see [below](#influxdb) |
+
+A `zmq` or `serial` source's `decoder` is `"keyvalue"` (the default), `"json"`,
+`"csv"` with `fields = ["a", "b"]`, or `"binary"` with `names = { "1" = "X" }`.
+
+`timeout` defaults to what each protocol needs: 2 s for a PLC (it answers in
+milliseconds, so longer means the link is down), 5 s for a REST API (a web
+service can be slow), 10 s for InfluxDB (a query over many series takes time).
+
+### InfluxDB
+
+An `influxdb` source runs its query every `interval` seconds and shows the
+newest point of each series, with the id made by joining the columns named in
+`id_from` (default `["_measurement", "_field"]`, so `cell.voltage`). A series
+with no point in the last `window` seconds (default 60) is blanked, as is
+everything while the server can't be reached, so a gap in the data is a gap in
+the plot and never a stale value. With `query`, the Flux must end with one row
+per series (`|> last()`); its own `range()` is the window.
+
+```toml
+[[source]]
+type = "influxdb"
+url = "http://localhost:8086"
+org = "plant"
+token = "${INFLUX_TOKEN}"                      # the token stays out of the file
+bucket = "readings"
+measurement = "cell"
+id_from = ["_measurement", "unit", "_field"]   # cell.A.voltage
+```
+
+## Keep secrets out of the file
+
+Text in a source may hold `${NAME}` or `${NAME:-default}`, replaced by that
+environment variable, so a token never has to be in the file. Write `$${` for
+a literal `${` (Flux has its own, in an InfluxDB `query`).
