@@ -37,6 +37,7 @@ its own:
 <div class="bar" data-bind="X.velocity.ratio" data-mode="width"></div> <!-- width: 0-100% -->
 <div data-bind="rate.values" data-mode="sparkline"></div>              <!-- line chart -->
 <div class="dial" data-bind="pressure.ratio" data-mode="var"></div>    <!-- CSS variable --value -->
+<div data-bind="events" data-mode="log"></div>                        <!-- a <div> per line, with data-level -->
 <span data-bind="wind" data-stale-after="3"></span>                    <!-- data-stale="true" once quiet -->
 
 <!-- A segment display: data-ghost draws the unlit segments. -->
@@ -46,6 +47,12 @@ its own:
 
 <script src="/_sightglass/sightglass.js"></script>
 ```
+
+`data-mode="log"` draws a `LogMonitor` a `<div>` per line. A line that starts
+with its level, after the time if it has one (`12:00:03 ERROR ...`,
+`WARNING: ...`), gets `data-level="debug"`, `"info"`, `"warning"` or
+`"error"` (for `ERROR`, `CRITICAL` and `FATAL`), so CSS can colour it:
+`[data-level="error"] { color: red }`. `LogHandler` writes lines that way.
 
 `data-mode="var"` sets the CSS variable `--value` to the number, so CSS alone
 can draw a needle (`rotate: calc(var(--value) * 270deg)`) or a fill level
