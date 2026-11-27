@@ -319,6 +319,45 @@ def test_start_runs_in_the_background_and_stop_shuts_down():
     monitor.stop()  # harmless when already stopped
 
 
+@pytest.mark.parametrize(
+    "sources",
+    [[], [SimulatedSource(lambda seconds: {"once": 1}, interval=0.01)]],
+    ids=["nothing", "sources that end"],
+)
+def test_a_started_monitor_with_nothing_left_to_run_keeps_its_loop(sources):
+    """Values sent from other threads are applied on the monitor's own thread,
+    until stop(): never on the sender's, and none lost while it shuts down."""
+    if sources:
+        source = sources[0]
+        finite = source.updates
+
+        async def once():
+            async for batch in finite():
+                yield batch
+                return
+
+        source.updates = once
+    applied_on = []
+    monitor = Monitor()
+    monitor.add(TextElement("x"))
+    real = monitor["x"].update
+    monitor["x"].update = lambda value: (
+        applied_on.append(threading.current_thread().name),
+        real(value),
+    )
+    monitor.start(sources=sources, outputs=[])
+    try:
+        time.sleep(0.1)  # long enough for a run with nothing in it to end
+        monitor.set("x", 1)
+        deadline = time.monotonic() + 2
+        while not applied_on:
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        assert applied_on == ["sightglass"]
+    finally:
+        monitor.stop()
+
+
 def test_start_raises_setup_errors_and_closes_what_started():
     first, second = Recorder(), Recorder(fail_start=True)
     with pytest.raises(OSError, match="port in use"):
