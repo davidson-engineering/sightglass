@@ -617,7 +617,45 @@ class MachineState(Element):
         return {**super().describe(), "states": self.states}
 
 
-class Coordinate(Element):
+class _Fields(Element):
+    """An element of named values, set one by one (``"<id>.<field>"``) or by mapping."""
+
+    def __init__(
+        self,
+        id: str,
+        names: Sequence[str],
+        *,
+        label: str | None = None,
+        format: TextFormat | None = None,
+        border: bool = False,
+    ):
+        super().__init__(id, label=label, border=border)
+        self.names = list(names)
+        self.format = format
+        self.values: dict[str, Any] = dict.fromkeys(self.names)
+
+    def update(self, value: Any) -> None:
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{type(self).__name__} {self.id!r} takes a mapping")
+        for name, v in value.items():
+            self.update_field(name, v)
+
+    def update_field(self, field: str, value: Any) -> None:
+        if field not in self.values:
+            raise self.unknown_field(field)
+        self.values[field] = value
+
+    def _text(self, name: str) -> str:
+        value = self.values[name]
+        if value is None:
+            return NO_VALUE
+        return self.format.format(value) if self.format else default_text(value)
+
+    def to_json(self) -> JSON:
+        return {name: self._text(name) for name in self.names}
+
+
+class Coordinate(_Fields):
     """A multi-axis position, e.g. X/Y/Z. Axes are fields: ``"<id>.x"``."""
 
     def __init__(
@@ -631,37 +669,31 @@ class Coordinate(Element):
         style: Style | None = None,
         border: bool = False,
     ):
-        super().__init__(id, label=label, border=border)
-        self.axes = list(axes)
+        super().__init__(
+            id,
+            axes,
+            label=label,
+            format=format or TextFormat(precision=4, force_sign=True),
+            border=border,
+        )
+        self.axes = self.names
         self.units = units
-        self.format = format or TextFormat(precision=4, force_sign=True)
         self.style = style
-        self.values: dict[str, Any] = dict.fromkeys(self.axes)
 
     def update(self, value: Any) -> None:
         if isinstance(value, Mapping):
-            for axis, v in value.items():
-                self.update_field(axis, v)
+            super().update(value)
         else:
             values = list(value)
             if len(values) != len(self.axes):
                 raise ValueError(f"expected {len(self.axes)} values, got {len(values)}")
             self.values.update(zip(self.axes, values, strict=True))
 
-    def update_field(self, field: str, value: Any) -> None:
-        if field not in self.values:
-            raise self.unknown_field(field)
-        self.values[field] = value
-
     def _text(self, axis: str) -> str:
-        value = self.values[axis]
-        if value is None:
-            return NO_VALUE
-        text = self.format.format(value)
-        return f"{text} {self.units}" if self.units else text
-
-    def to_json(self) -> JSON:
-        return {axis: self._text(axis) for axis in self.axes}
+        text = super()._text(axis)
+        if self.units and self.values[axis] is not None:
+            return f"{text} {self.units}"
+        return text
 
     def render(self, width: int) -> str:
         parts = [
@@ -672,3 +704,30 @@ class Coordinate(Element):
 
     def describe(self) -> dict[str, JSON]:
         return {**super().describe(), "units": self.units, "axes": self.axes}
+
+
+class Counters(_Fields):
+    """A row of labelled numbers, e.g. submitted / done / failed.
+
+    Fields are set one by one (``"<id>.done"``) or with a mapping. Integers
+    show as integers unless ``format`` says otherwise.
+    """
+
+    def __init__(
+        self,
+        id: str,
+        fields: Sequence[str],
+        *,
+        label: str | None = None,
+        format: TextFormat | None = None,
+        border: bool = False,
+    ):
+        super().__init__(id, fields, label=label, format=format, border=border)
+        self.fields = self.names
+
+    def render(self, width: int) -> str:
+        parts = [f"{name} {self._text(name)}" for name in self.fields]
+        return f"{self.label} " + "  ".join(parts)
+
+    def describe(self) -> dict[str, JSON]:
+        return {**super().describe(), "fields": self.fields}

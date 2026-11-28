@@ -34,6 +34,7 @@ Update = Mapping[str, Any]
 # Unknown ids are reported once each; stop remembering new ones past this many
 # so a noisy link can't grow memory without bound.
 _MAX_REPORTED_KEYS = 1000
+_DROP_SUMMARY_SECONDS = 60
 
 # A lamp the monitor creates for a boolean is white when off, not alarming red.
 UNLIT = Style(fg="white", bold=True)
@@ -166,6 +167,9 @@ class Monitor:
         self._groups: dict[str, Group] = {}
         self._routes: dict[str, tuple[Element, str | None]] = {}
         self._reported: set[str] = set()
+        # ids refused at max_elements since the last warning, up to _MAX_REPORTED_KEYS
+        self._dropped: set[str] = set()
+        self._dropped_at: float | None = None  # monotonic() of that warning
         self._changed = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: int | None = None
@@ -229,11 +233,7 @@ class Monitor:
             self._reject(key, "no element with this id")
             return None
         if len(self._elements) >= self.max_elements:
-            self._reject(
-                key,
-                f"no element with this id, and the monitor already has "
-                f"{self.max_elements} elements (max_elements)",
-            )
+            self._drop(key)
             return None
         if isinstance(value, bool):
             element: Element = IndicatorLamp(key, off_style=UNLIT)
@@ -422,6 +422,35 @@ class Monitor:
                 return None
         self._routes[key] = route
         return route
+
+    def _drop(self, key: str) -> None:
+        """Count an id refused at max_elements; warn first, then once a minute."""
+        self.rejected += 1
+        if len(self._dropped) < _MAX_REPORTED_KEYS:
+            self._dropped.add(key)
+        now = monotonic()
+        if self._dropped_at is None:
+            logger.warning(
+                "Ignored update for %r: no element with this id, and the monitor "
+                "already has %d elements (max_elements); further new ids are "
+                "dropped, summarised once a minute. Raise max_elements "
+                "(--max-elements) to keep them",
+                key,
+                self.max_elements,
+            )
+        elif now - self._dropped_at >= _DROP_SUMMARY_SECONDS:
+            full = len(self._dropped) >= _MAX_REPORTED_KEYS
+            logger.warning(
+                "updates for %s%d ids were dropped in the last minute, e.g. %r; "
+                "raise max_elements (--max-elements) to keep them",
+                "at least " if full else "",
+                len(self._dropped),
+                key,
+            )
+        else:
+            return
+        self._dropped.clear()
+        self._dropped_at = now
 
     def _reject(self, key: str, reason: str) -> None:
         self.rejected += 1
