@@ -22,7 +22,8 @@ a file and not a program::
 A **source** is where values come from (``sources.py``). A **panel** is one
 tile of the page, of a **type** (``panels.py``): ``trend`` plots ids over
 time (a primary plot and, optionally, a secondary one), ``value`` shows one
-id as large text, ``lamp`` as a light and ``gauge`` as a bar. A **section** is
+id as large text, ``lamp`` as a light, ``gauge`` as a bar and ``log`` as lines of
+text. A **section** is
 a titled group of panels (``[[section]]`` with
 ``[[section.panel]]`` inside); panels written at the top level are one
 untitled section. A file with no ``[[source]]`` is fed like any dashboard,
@@ -188,7 +189,8 @@ def load(path: str | Path) -> Dashboard:
     it runs (``--host``, ``--port``, ``--token``, ``--open``, ``--debug``).
 
     ``[[source]]``, of a ``type``: ``rest`` (``url`` (required), ``prefix``,
-    ``select``, ``key``, ``interval``, ``timeout``, ``accept`` and ``headers``;
+    ``select``, ``key``, ``interval``, ``timeout``, ``accept``, ``headers`` and,
+    for a list of events, ``events``, ``cursor``, ``line`` and ``id``;
     see :class:`~sightglass.sources.rest.Endpoint`), ``ads`` (``target`` and
     ``variables``, or ``file``), ``zmq``, ``serial`` (each with a ``decoder``)
     and ``influxdb`` (see :class:`~sightglass.sources.influx.InfluxSource`).
@@ -205,8 +207,9 @@ def load(path: str | Path) -> Dashboard:
     its height over the primary's, default 0.5; ``first``, which is on top,
     ``"secondary"`` (the default) or ``"primary"``; ``mode``, ``"lines"`` or
     ``"heatmap"``), ``value`` (``id``, ``units``,
-    ``precision``), ``lamp`` (``id``) and ``gauge`` (``id``, ``units``,
-    ``precision``, ``min``, ``max``). Panels go at the top level or in
+    ``precision``), ``lamp`` (``id``), ``gauge`` (``id``, ``units``,
+    ``precision``, ``min``, ``max``) and ``log`` (``id``, ``lines``,
+    ``timestamp``). Panels go at the top level or in
     ``[[section]]`` tables with a ``title``, as ``[[section.panel]]``.
     """
     path = Path(path)

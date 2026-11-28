@@ -1148,3 +1148,51 @@ async def test_a_trends_plots_follow_their_order_and_ratio_and_the_title_bar_mov
     found = await laid_out('title_bar = "bottom"\n', 'first = "primary"\n')
     assert found["primary"][0] < found["secondary"][0]  # primary on top
     assert found["header"][0] > found["primary"][0]  # the title bar is below
+
+
+@pytest.mark.parametrize("theme", ["classic", "terminal"])
+@pytest.mark.parametrize("width", [1280, 390])
+async def test_a_log_panel_shows_the_newest_lines_at_the_bottom_in_both_themes(
+    page, serve, tmp_path, theme, width
+):
+    """The ``log`` panel of a config file: the last lines of a ``LogMonitor``,
+    oldest at the top, a warning in its colour, long lines cut off to the
+    panel's width rather than widening the page."""
+    from sightglass.dashboard import load
+
+    config = tmp_path / "dashboard.toml"
+    config.write_text(
+        f"""
+theme = "{theme}"
+[[source]]
+url = "http://127.0.0.1:1/x"
+[[panel]]
+type = "log"
+title = "Events"
+id = "svc.events"
+lines = 6
+"""
+    )
+    dashboard = load(config)
+    monitor = Monitor()
+    monitor.add(*dashboard.elements())
+    for i in range(1, 10):
+        level = "WARNING" if i == 9 else "INFO"
+        monitor.set("svc.events", f"{level} event {i} " + "long " * 40)
+    await page.set_viewport_size({"width": width, "height": 800})
+    await page.goto(serve(None, monitor, html=dashboard.page(), theme=theme))
+    rows = page.locator(".panel.log .lines > div")
+    await expect(rows).to_have_count(6)  # the monitor keeps the last six
+    await expect(rows.first).to_contain_text("event 4")
+    await expect(rows.last).to_contain_text("event 9")
+    await expect(rows.last).to_have_attribute("data-level", "warning")
+    assert await page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    box = await page.locator(".panel.log").bounding_box()
+    last = await rows.last.bounding_box()
+    assert (
+        box["y"] <= last["y"]
+        and last["y"] + last["height"] <= box["y"] + box["height"] + 1
+    )
+    assert box["x"] >= 0 and box["x"] + box["width"] <= width
