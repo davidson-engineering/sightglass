@@ -278,6 +278,7 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | on/off | `IndicatorLamp(id)` | bool, 1/0, on/off |
 | many flags in one integer | `MachineState(id, states=[...])` (bit 0 first) | an integer |
 | a position | `Coordinate(id, axes=("x", "y", "z"))` | a list, or `id.x` |
+| a row of labelled counts | `Counters(id, fields=["done", "failed"])` | a mapping, or `id.done` |
 | a grid | `Table(id, rows=[...], columns=[...])` | `id.row.column` |
 | recent events | `LogMonitor(id, lines=10, timestamp=True)` | a string; a line starting `WARNING` or `ERROR` (after the time) is coloured |
 

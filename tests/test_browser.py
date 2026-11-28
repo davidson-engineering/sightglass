@@ -15,6 +15,7 @@ import pytest
 from playwright.async_api import async_playwright, expect
 
 from sightglass import (
+    Counters,
     IndicatorLamp,
     LogMonitor,
     Monitor,
@@ -254,6 +255,29 @@ async def test_generic_page_shows_the_programs_own_resources(page, serve):
         re.compile(r"\d")
     )
     await expect(page.locator(".row", has_text="Uptime")).to_contain_text(" s")
+
+
+@pytest.mark.parametrize("theme", ["classic", "terminal"])
+async def test_counters_share_one_row_and_wrap_on_a_phone(page, serve, theme):
+    monitor = Monitor()
+    fields = ["submitted", "done", "retried", "failed"]
+    monitor.add(Counters("jobs.totals", fields, label="Totals"))
+    monitor.update(
+        {f"jobs.totals.{f}": n for f, n in zip(fields, (44, 41, 3, 2), strict=True)}
+    )
+    await page.goto(serve(None, monitor, theme=theme))
+    cells = page.locator(".counter b")
+    await expect(cells).to_have_text(["44", "41", "3", "2"])
+
+    async def tops():
+        return await page.locator(".counter").evaluate_all(
+            "els => els.map(e => Math.round(e.getBoundingClientRect().top))"
+        )
+
+    assert len(set(await tops())) == 1  # desktop: one row
+    await page.set_viewport_size({"width": 390, "height": 800})
+    narrow = await page.evaluate("document.documentElement.scrollWidth")
+    assert narrow <= 390  # wraps rather than overflowing
 
 
 async def test_generic_page_offers_the_terminal_theme(page, serve):

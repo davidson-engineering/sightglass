@@ -2,9 +2,11 @@ import pytest
 
 from sightglass import (
     Coordinate,
+    Counters,
     IndicatorLamp,
     LogMonitor,
     MachineState,
+    Monitor,
     ProgressBar,
     RangeBar,
     Sparkline,
@@ -155,6 +157,33 @@ def test_coordinate():
     assert pos.render(80) == "Position X: +0.2500 mm Y: -2.0000 mm Z: +3.5000 mm"
     with pytest.raises(ValueError):
         pos.update([1, 2])
+
+
+def test_counters():
+    jobs = Counters("jobs.totals", ["submitted", "done", "failed"], label="Jobs")
+    assert jobs.to_json() == {"submitted": "-", "done": "-", "failed": "-"}
+    jobs.update({"submitted": 44, "done": 41})
+    jobs.update_field("failed", 2)
+    assert jobs.to_json() == {"submitted": "44", "done": "41", "failed": "2"}
+    assert jobs.render(80) == "Jobs submitted 44  done 41  failed 2"
+    assert jobs.describe()["fields"] == ["submitted", "done", "failed"]
+    with pytest.raises(KeyError):
+        jobs.update_field("lost", 1)
+    with pytest.raises(KeyError):
+        jobs.update({"lost": 1})
+
+
+def test_counters_format_overrides_the_default():
+    rate = Counters("r", ["a"], format=TextFormat(precision=1))
+    rate.update_field("a", 3)
+    assert rate.to_json() == {"a": "3.0"}
+
+
+def test_counters_through_a_monitor():
+    monitor = Monitor()
+    monitor.add(Counters("jobs.totals", ["done", "failed"]))
+    monitor.set("jobs.totals.done", 41)
+    assert monitor["jobs.totals"].to_json() == {"done": "41", "failed": "-"}
 
 
 def test_copy_is_independent():
