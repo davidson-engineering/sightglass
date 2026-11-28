@@ -311,14 +311,16 @@ class Sparkline(Element):
         self.format = format
         self.label_width = label_width
         self.style = style
-        self.history: deque[float] = deque(maxlen=points)
+        self.history: deque[int | float] = deque(maxlen=points)
         self._point_started = 0.0
 
     def update(self, value: Any) -> None:
         number = as_number(value)
         if number is None:
             raise ValueError("not a number")
-        point = float(number) * self.scale
+        point = number * self.scale
+        if isinstance(number, int) and isinstance(point, float) and point.is_integer():
+            point = int(point)  # a whole value stays whole: 36, not 36.0
         if self.interval is not None:
             now = monotonic()
             if self.history and now - self._point_started < self.interval:

@@ -250,7 +250,7 @@ def test_sparkline_interval_keeps_one_point_per_interval(monkeypatch):
         spark.update(value)
     # Updates within an interval replace its point: the chart covers
     # points x interval seconds, and its last point is the latest value.
-    assert spark.to_json() == {"text": "6.0", "values": [3.0, 5.0, 6.0]}
+    assert spark.to_json() == {"text": "6", "values": [3, 5, 6]}
     with pytest.raises(ValueError, match="interval"):
         Sparkline("altitude", interval=0)
 
@@ -274,3 +274,16 @@ def test_lamps_take_styles_like_other_elements():
     lamp = IndicatorLamp("pump", on_style=lit)
     lamp.update(True)
     assert lamp.render(20).endswith(lit.apply("●"))
+
+
+def test_sparkline_keeps_whole_numbers_whole():
+    for value in [36, "36"]:
+        spark = Sparkline("queue")
+        spark.update(value)
+        assert spark.to_json() == {"text": "36", "values": [36]}
+    spark = Sparkline("net", scale=1 / 1024)
+    spark.update(1000)
+    assert spark.text == "0.976562"
+    text = TextElement("load")
+    text.update(0.0205078)
+    assert text.to_json() == "0.0205078"
