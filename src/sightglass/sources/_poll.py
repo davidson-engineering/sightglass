@@ -34,10 +34,17 @@ class Feed:
     def __init__(self, name: str) -> None:
         self.name = name
         self.failing = False
+        self._answered = asyncio.Event()  # set by the first poll that succeeds
         self._polls: deque[tuple[float, float]] = deque()  # (ended, took)
+
+    async def first_answer(self) -> None:
+        """Return once a poll has succeeded (at once if one already has)."""
+        await self._answered.wait()
 
     def record(self, ended: float, took: float, failed: bool) -> None:
         self.failing = failed
+        if not failed:
+            self._answered.set()
         self._polls.append((ended, took))
         while self._polls and self._polls[0][0] < ended - self.WINDOW:
             self._polls.popleft()
@@ -53,6 +60,22 @@ class Feed:
             "slowest": max((p[1] for p in polls), default=None),
             "failing": self.failing,
         }
+
+
+def describe(error: BaseException) -> str:
+    """An error from a request, in our words: aiohttp words a refused
+    connection to an ``http://`` URL with ``ssl:default``, which suggests a
+    TLS problem that isn't there."""
+    if isinstance(error, aiohttp.ClientConnectorError) and not isinstance(
+        error, aiohttp.ClientSSLError
+    ):
+        cause = error.os_error
+        if isinstance(cause, ConnectionRefusedError):
+            why = "connection refused"
+        else:
+            why = (getattr(cause, "strerror", None) or str(cause)).lower()
+        return f"cannot connect to {error.host}:{error.port}: {why}"
+    return str(error) or type(error).__name__
 
 
 async def read_body(response: aiohttp.ClientResponse, limit: int) -> bytes:
@@ -121,7 +144,7 @@ async def poll(
             down = True
         else:
             if down:
-                logger.info("%s is answering again", name)
+                logger.warning("%s is answering again", name)
             down = False
             logged = ""
         valid = {id: value for id, value in reply.items() if value is not None}

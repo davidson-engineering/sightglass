@@ -30,7 +30,7 @@ def test_text_element_formats_value_not_caption():
     text = TextElement("x", caption="X: ", units="mm", format=TextFormat(precision=2))
     text.update("1.5")
     assert text.render(40) == "X: 1.50 mm"
-    assert text.to_json() == "1.50"
+    assert text.to_json() == "1.50 mm"
 
 
 def test_text_element_scale():
@@ -151,7 +151,11 @@ def test_coordinate():
     assert pos.to_json() == {"x": "-", "y": "-", "z": "-"}
     pos.update([1, -2, 3.5])
     pos.update_field("x", 0.25)
-    assert pos.to_json() == {"x": "+0.2500", "y": "-2.0000", "z": "+3.5000"}
+    assert pos.to_json() == {
+        "x": "+0.2500 mm",
+        "y": "-2.0000 mm",
+        "z": "+3.5000 mm",
+    }
     assert pos.render(80) == "Position X: +0.2500 mm Y: -2.0000 mm Z: +3.5000 mm"
     with pytest.raises(ValueError):
         pos.update([1, 2])

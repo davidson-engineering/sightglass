@@ -15,6 +15,7 @@ import pytest
 from playwright.async_api import async_playwright, expect
 
 from sightglass import (
+    Coordinate,
     IndicatorLamp,
     LogMonitor,
     Monitor,
@@ -316,6 +317,29 @@ async def test_generic_page_draws_declared_and_new_elements(page, serve):
     await expect(page.locator("#connection")).to_have_text("Live")
 
 
+async def test_generic_page_shows_units_once_for_each_element(page, serve):
+    monitor = Monitor()
+    monitor.add(
+        TextElement("uptime", label="Uptime", units="s"),
+        Sparkline("cpu", label="Cpu", units="%"),
+        RangeBar("temp", label="Temp", units="degC"),
+        ProgressBar("job", label="Job"),
+        Coordinate("pos", label="Pos", axes=("x",), units="mm"),
+    )
+    await page.goto(serve(None, monitor))
+    monitor.update({"uptime": 7, "cpu": 8.8, "temp": 50, "job": 25, "pos": {"x": 1}})
+    for label, text in [
+        ("Uptime", "7 s"),
+        ("Cpu", "8.8 %"),
+        ("Temp", "50.00 degC"),
+        ("Job", "25.0%"),
+        ("Pos", "X +1.0000 mm"),
+    ]:
+        row = page.locator(".row", has_text=label)
+        await expect(row).to_contain_text(text)
+        assert (await row.inner_text()).count(text.split()[-1]) == 1
+
+
 async def test_log_binding_marks_each_lines_level(page, serve):
     monitor = Monitor()
     monitor.add(LogMonitor("log", lines=5))
@@ -412,6 +436,24 @@ class Ticking:
             self.feeds[0].record(loop.time(), loop.time() - began, failed=False)
             n += 1
             yield [{"speed": n}]
+
+
+async def test_signals_view_wraps_long_ids_on_a_phone_instead_of_clipping_them(
+    page, serve
+):
+    monitor = Monitor()
+    ids = [f"jobs.totals.count.{leaf}" for leaf in ("submitted", "done", "retried")]
+    monitor.update({i: 1 for i in ids})
+    await page.set_viewport_size({"width": 390, "height": 800})
+    await page.goto(serve(None, monitor))
+    await page.locator("[data-signals-open]").click()
+
+    names = page.locator("sightglass-signals tbody th")
+    await expect(names).to_have_count(3)
+    clipped = await names.evaluate_all(
+        "els => els.map(e => e.scrollWidth > e.clientWidth + 1)"
+    )
+    assert clipped == [False, False, False]
 
 
 async def test_signals_view_shows_how_fast_the_sources_poll(page, serve):

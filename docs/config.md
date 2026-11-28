@@ -12,6 +12,7 @@ type = "rest"                                  # poll a JSON API with GET
 url = "${API_URL:-http://localhost:8000/api/readings}"
 prefix = "plant"                               # ids start "plant."
 select = "sensors"                             # start from this place in the JSON
+exclude = ["plant.*.firmware"]                 # id patterns to leave out (or include = [...])
 interval = 0.5                                 # seconds between polls
 
 [[panel]]                                      # a trend, a panel per name
@@ -21,6 +22,10 @@ ids = ["plant.{name}.value.*"]                 # * stands for any characters
 range = 60                                     # the primary plot: the last minute
 secondary_range = 300                          # the secondary, above it: 5 minutes
 ```
+
+Not sure what ids a source makes? `sightglass --rest URL --list` polls once,
+prints each id with its value and exits (`--config dashboard.toml --list` does
+the same for a file's sources), so the panels' `ids` can be copied from it.
 
 A mistake in the file, such as an unknown key, is reported in one clear line.
 [examples/](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#10-a-dashboard-from-a-config-file-a-rest-api)
@@ -117,6 +122,20 @@ blue wherever they are placed.
 
 With `secondary = false`, the other three secondary settings are an error.
 
+### A panel that shows nothing
+
+Once every source has answered a poll, sightglass warns (once, on stderr) about
+each panel whose id or pattern matches nothing, with the closest id it did
+receive:
+
+```text
+panel "CPU" (section "Host"): no id 'res.cpu_percent'; did you mean 'res.host.cpu_percent'?
+```
+
+It only checks when every `[[source]]` is a polling one (rest, influxdb); a
+source that can deliver an id at any time (zmq, serial, ads, `POST /update`)
+turns the check off.
+
 ### What panels cost
 
 The dashboard keeps history only for the ids its `trend` panels plot. A
@@ -130,7 +149,7 @@ page, so keep those dashboards to sources with a few hundred ids.
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `title` | the page heading | `"Dashboard"` |
-| `version` | a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time | none |
+| `version` | a label for this dashboard's own version (a `v` goes before one that starts with a digit: `1.2` shows `v1.2`, `spike` stays `spike`), shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time | none |
 | `theme` | the look unless a viewer switches: `"classic"` or `"terminal"` | `"classic"` |
 | `stale_after` | seconds without new data before values dim | never |
 | `history` | seconds of values kept for plots | the longest `range`, and a minute |
@@ -179,7 +198,7 @@ every id they make. [Sources](sources.md) describes each kind in full.
 
 | `type` | Keys |
 | --- | --- |
-| `rest` | `url`, `prefix`, `select`, `key`, `interval`, `timeout`, `accept`, `headers`: see [REST APIs](sources.md#rest-apis) |
+| `rest` | `url`, `prefix`, `select`, `key`, `include`, `exclude`, `interval`, `timeout`, `accept`, `headers`: see [REST APIs](sources.md#rest-apis) |
 | `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC: `write = true` on a variable is refused here (an interface file's marks are left unused) |
 | `zmq` | `endpoint`, `pattern` (`"sub"` or `"pull"`), `bind`, and a `decoder` |
 | `serial` | `port` (default `"auto"`), `baudrate`, and a `decoder` |

@@ -19,7 +19,9 @@ def render(dashboard: Dashboard) -> str:
 
     title = html.escape(dashboard.title)
     identity = [
-        f"v{dashboard.version}" if dashboard.version else "",
+        f"v{dashboard.version}"
+        if dashboard.version[:1].isdigit()
+        else dashboard.version,
         dashboard.config,
         f"config {dashboard.digest}" if dashboard.digest else "",
         f"sightglass {__version__}",

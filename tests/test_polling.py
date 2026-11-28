@@ -187,6 +187,18 @@ async def test_a_big_reply_is_parsed_in_a_worker_thread_and_a_small_one_inline(
     assert on_loop["small"] is True  # a few bytes: not worth a thread
 
 
+async def test_a_feeds_first_answer_waits_for_a_poll_that_succeeds():
+    feed = Feed("x")
+    waiting = asyncio.ensure_future(feed.first_answer())
+    feed.record(0.0, 0.01, failed=True)
+    await asyncio.sleep(0)
+    assert not waiting.done()  # a failed poll is not an answer
+    feed.record(0.2, 0.01, failed=False)
+    await asyncio.wait_for(waiting, 1)
+    feed.record(0.4, 0.01, failed=True)
+    await asyncio.wait_for(feed.first_answer(), 1)  # answered once is enough
+
+
 def test_a_feed_reports_polls_a_second_and_how_long_they_took():
     feed = Feed("x")
     assert feed.to_json(0)["rate"] is None  # nothing polled yet
