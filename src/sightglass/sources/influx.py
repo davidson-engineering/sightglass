@@ -13,7 +13,7 @@ from typing import Any
 import aiohttp
 
 from ..monitor import Update
-from ._poll import Failed, Feed, parse, poll, read_body
+from ._poll import Failed, Feed, describe, parse, poll, read_body
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ class InfluxSource:
                         f"HTTP {response.status} {_message(body) or response.reason}"
                     )
         except (aiohttp.ClientError, TimeoutError) as error:
-            raise Failed(str(error) or type(error).__name__) from None
+            raise Failed(describe(error)) from None
         return await parse(len(body), _reply, body, self.id_from, self.prefix)
 
     def __repr__(self) -> str:

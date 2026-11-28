@@ -330,3 +330,83 @@ def test_no_input_note_when_stdin_is_empty():
     time.sleep(0.3)
     _, err = stop(process)
     assert "input ended" not in err
+
+
+def _fake_endpoint(body: bytes):
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_port}/metrics"
+
+
+def _list(*argv):
+    return subprocess.run(
+        [sys.executable, "-m", "sightglass", *argv],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def test_list_prints_the_ids_a_rest_endpoint_makes():
+    body = b'{"host": {"memory": {"percent": 41.5}}, "load": [0.5, 0.7], "ok": true}'
+    server, url = _fake_endpoint(body)
+    try:
+        done = _list("--rest", url, "--list")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == [
+        "metrics.host.memory.percent = 41.5",
+        "metrics.load.0 = 0.5",
+        "metrics.load.1 = 0.7",
+        "metrics.ok = True",
+    ]
+
+
+def test_list_reads_the_sources_of_a_config_file(tmp_path):
+    server, url = _fake_endpoint(b'{"workers": {"worker-1": {"rss_mb": 12}}}')
+    config = tmp_path / "dashboard.toml"
+    config.write_text(
+        f'[[source]]\ntype = "rest"\nurl = "{url}"\nprefix = "svc"\n'
+        '[[panel]]\ntype = "value"\nid = "svc.x"\n'
+    )
+    try:
+        done = _list("--config", str(config), "--list")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == ["svc.workers.worker-1.rss_mb = 12"]
+
+
+def test_list_of_an_unreachable_url_is_one_line_and_fails():
+    server, url = _fake_endpoint(b"{}")
+    server.shutdown()
+    server.server_close()  # the port is now closed
+    done = _list("--rest", url, "--list")
+    assert done.returncode == 1
+    assert done.stdout == ""
+    assert done.stderr.startswith("sightglass: error: ")
+    assert url in done.stderr
+    assert len(done.stderr.strip().splitlines()) == 1
+
+
+def test_list_without_a_source_is_explained():
+    done = _list("--list")
+    assert done.returncode == 1
+    assert "--list needs a source" in done.stderr
