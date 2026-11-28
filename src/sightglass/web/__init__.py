@@ -356,6 +356,7 @@ class WebDashboard:
             "type": "snapshot",
             "title": self.title,
             "staleAfter": self.stale_after,
+            "history": monitor.history.seconds if monitor.history else None,
             "layout": monitor.describe(),
             "values": monitor.snapshot(),
             "ages": monitor.ages(),

@@ -1244,3 +1244,44 @@ lines = 6
         and last["y"] + last["height"] <= box["y"] + box["height"] + 1
     )
     assert box["x"] >= 0 and box["x"] + box["width"] <= width
+
+
+async def test_generic_page_draws_a_trend_beside_each_number_when_history_is_on(
+    page, serve
+):
+    monitor = Monitor(history=60)
+    for n in range(4):
+        monitor.update({"cpu": n * 10, "state": "idle"})
+        await asyncio.sleep(1.1)
+    await page.goto(serve(None, monitor))
+    await expect(page.locator("[data-trend=cpu]:not([hidden]) polyline")).to_have_count(
+        1
+    )
+    await expect(page.locator("[data-trend=cpu] polyline")).to_have_attribute(
+        "points", re.compile(r"\d,\d.* .*\d,\d")
+    )
+    await expect(page.locator("[data-trend=state]")).to_be_hidden()
+    # it follows: points since the last request are added
+    before = await page.locator("[data-trend=cpu] polyline").get_attribute("points")
+    monitor.set("cpu", 500)
+    await expect(page.locator("[data-trend=cpu] polyline")).not_to_have_attribute(
+        "points", before, timeout=5_000
+    )
+
+
+async def test_generic_page_has_no_trends_without_history(page, serve):
+    monitor = Monitor()
+    monitor.update({"cpu": 1, "state": "idle"})
+    await page.goto(serve(None, monitor))
+    await expect(page.get_by_text("cpu", exact=True)).to_be_visible()
+    await page.wait_for_timeout(1500)
+    await expect(page.locator("[data-trend]")).to_have_count(0)
+
+
+async def test_generic_page_stops_drawing_trends_past_a_thousand_values(page, serve):
+    monitor = Monitor(history=60, max_elements=2000)
+    monitor.update({f"v{n}": n for n in range(1001)})
+    await page.goto(serve(None, monitor))
+    await expect(page.locator(".note")).to_contain_text("1001 values")
+    await page.wait_for_timeout(1500)
+    await expect(page.locator("[data-trend]")).to_have_count(0)
