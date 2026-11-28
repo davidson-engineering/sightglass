@@ -23,6 +23,10 @@ range = 60                                     # the primary plot: the last minu
 secondary_range = 300                          # the secondary, above it: 5 minutes
 ```
 
+Not sure what ids a source makes? `sightglass --rest URL --list` polls once,
+prints each id with its value and exits (`--config dashboard.toml --list` does
+the same for a file's sources), so the panels' `ids` can be copied from it.
+
 A mistake in the file, such as an unknown key, is reported in one clear line.
 [examples/](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#10-a-dashboard-from-a-config-file-a-rest-api)
 has three config dashboards to copy: a REST API, a PLC and an InfluxDB
