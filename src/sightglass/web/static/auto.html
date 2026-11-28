@@ -88,6 +88,10 @@
     .empty pre { padding: 12px; border-radius: 8px; background: var(--bg); color: var(--text); overflow-x: auto; white-space: pre; }
 
     .lamps { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+    .counters { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+    .counter { display: flex; flex-direction: column; align-items: flex-end; min-width: 3.5em; }
+    .counter small { color: var(--muted); font-size: 0.8em; }
+    .counter b { font-weight: inherit; font-variant-numeric: tabular-nums; text-align: right; }
     .lamp { display: flex; align-items: center; gap: 6px; }
     .value .led { width: 12px; height: 12px; }
 
@@ -247,6 +251,9 @@
         case "Coordinate":
           return el("div", { className: "lamps" }, ...item.axes.map((axis) =>
             el("span", {}, `${axis.toUpperCase()} `, bound("span", `${item.id}.${axis}`))));
+        case "Counters":
+          return el("div", { className: "counters" }, ...item.fields.map((field) =>
+            el("span", { className: "counter" }, el("small", {}, field), bound("b", `${item.id}.${field}`))));
         case "Table":
           return el("div", { className: "table-scroll" }, el("table", {},
             el("tr", {}, el("th"), ...item.columns.map((column) => el("th", { dataset: { column } }, column))),

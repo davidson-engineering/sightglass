@@ -444,3 +444,19 @@ ids = ["requests_total"]
     finally:
         monitor.stop()
         await server.close()
+
+
+def test_a_panel_error_names_its_section_and_title(tmp_path):
+    text = MINIMAL.split("[[panel]]")[0] + "".join(
+        f'[[section]]\ntitle = "{name}"\n'
+        + "".join(
+            f'[[section.panel]]\ntitle = "{name} {n}"\nids = ["a.*"]\n'
+            + ("precison = 2\n" if (name, n) == ("Service", 3) else "")
+            for n in (1, 2, 3)
+        )
+        for name in ("Health", "Service")
+    )
+    with pytest.raises(ValueError) as error:
+        load(write(tmp_path, text))
+    expected = 'section "Service", panel 3 "Service 3" has unknown \'precison\''
+    assert expected in str(error.value)
