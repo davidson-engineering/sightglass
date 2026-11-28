@@ -368,7 +368,10 @@ def config_build(
         debug=args.debug,
         open_browser=args.open,
     )
-    return dashboard.monitor(), dashboard.sources, [web]
+    outputs: list[Output] = [web]
+    if audit := dashboard.audit():
+        outputs.append(audit)
+    return dashboard.monitor(), dashboard.sources, outputs
 
 
 def launch(args: argparse.Namespace) -> None:
