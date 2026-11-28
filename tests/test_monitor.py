@@ -147,7 +147,21 @@ def test_dropped_ids_are_summarised_once_a_minute(caplog, monkeypatch):
         now[0] += 1
         monitor.update({"f": 6})
     assert len(caplog.records) == 2
-    assert "dropped 4 new ids in the last minute, e.g. 'f'" in caplog.text
+    assert "updates for 4 ids were dropped in the last minute, e.g. 'f'" in caplog.text
+
+
+def test_the_summary_counts_ids_not_updates(caplog, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr("sightglass.monitor.monotonic", lambda: now[0])
+    monitor = Monitor(max_elements=1)
+    with caplog.at_level(logging.WARNING, logger="sightglass"):
+        monitor.update({"a": 1, "b": 2})  # b: the first drop, warned at once
+        for _ in range(100):  # a source resending the same two extra ids
+            monitor.update({"c": 3, "d": 4})
+        now[0] += 60
+        monitor.update({"c": 3})
+    assert "updates for 2 ids were dropped in the last minute" in caplog.text
+    assert monitor.rejected == 202
 
 
 def test_bad_value_still_warns_after_the_limit_floods(caplog):
