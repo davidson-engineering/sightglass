@@ -7,6 +7,8 @@ described on the project's GitHub releases page.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-27
+
 ### Breaking
 
 - A REST list of objects no longer makes an id of each object's key field: `sensors.s0.id` is gone, and the key is in the other ids' names (`sensors.s0.rate`).
