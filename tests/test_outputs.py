@@ -12,6 +12,7 @@ from sightglass import (
     Monitor,
     ProgressBar,
     RangeBar,
+    Sparkline,
     TerminalDisplay,
     TextElement,
     WebDashboard,
@@ -380,6 +381,21 @@ async def test_web_returns_current_values_as_json(client):
     values = await response.json()
     assert values["speed"] == "3"
     assert values["X.velocity"] == {"text": "12.00 mm/s", "ratio": 0.12}
+
+
+async def test_values_put_units_in_the_text_of_every_element(client):
+    client.monitor.add(
+        TextElement("uptime", units="s"),
+        Sparkline("cpu", units="%"),
+        RangeBar("temp", units="C"),
+        ProgressBar("done"),
+    )
+    client.monitor.update({"uptime": 7, "cpu": 8.8, "temp": 50, "done": 5})
+    values = await (await client.get("/values")).json()
+    assert values["uptime"] == "7 s"
+    assert values["cpu"]["text"] == "8.8 %"
+    assert values["temp"]["text"] == "50.00 C"
+    assert values["done"]["text"].endswith("%")
 
 
 def test_open_browser_opens_the_dashboard_once_it_is_up(monkeypatch):
