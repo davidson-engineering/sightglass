@@ -57,6 +57,22 @@ class Feed:
         }
 
 
+def describe(error: BaseException) -> str:
+    """An error from a request, in our words: aiohttp words a refused
+    connection to an ``http://`` URL with ``ssl:default``, which suggests a
+    TLS problem that isn't there."""
+    if isinstance(error, aiohttp.ClientConnectorError) and not isinstance(
+        error, aiohttp.ClientSSLError
+    ):
+        cause = error.os_error
+        if isinstance(cause, ConnectionRefusedError):
+            why = "connection refused"
+        else:
+            why = (getattr(cause, "strerror", None) or str(cause)).lower()
+        return f"cannot connect to {error.host}:{error.port}: {why}"
+    return str(error) or type(error).__name__
+
+
 async def read_body(response: aiohttp.ClientResponse, limit: int) -> bytes:
     """The whole body of ``response``. A longer one is refused, not cut short,
     and one that says it is too long is refused before any of it is read."""
@@ -123,7 +139,7 @@ async def poll(
             down = True
         else:
             if down:
-                logger.info("%s is answering again", name)
+                logger.warning("%s is answering again", name)
             down = False
             logged = ""
         valid = {id: value for id, value in reply.items() if value is not None}

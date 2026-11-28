@@ -13,6 +13,7 @@ sightglass --demo
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import re
 import sys
@@ -161,6 +162,12 @@ def parser() -> argparse.ArgumentParser:
         "panels that show them (see the README); replaces the other inputs",
     )
     inputs.add_argument(
+        "--list",
+        action="store_true",
+        help="read the sources once (a --config file's too), print each id with "
+        "its value, and exit: the ids to write a config file with",
+    )
+    inputs.add_argument(
         "--demo",
         nargs="?",
         const="elements",
@@ -281,7 +288,11 @@ def build(args: argparse.Namespace) -> tuple[Monitor, list[Source], list[Output]
     elif args.rest_header or args.rest_interval != 1.0:
         raise ValueError("--rest-interval and --rest-header go with --rest")
 
-    if sys.stdin is not None and not sys.stdin.isatty() and not args.demo:
+    if (
+        sys.stdin is not None
+        and not sys.stdin.isatty()
+        and not (args.demo or args.list)
+    ):
         stdin = StdinSource(echo=not args.terminal)
         stdin.on_end = lambda: _input_ended(stdin)
         sources.append(stdin)
@@ -502,6 +513,49 @@ def decoder(args: argparse.Namespace) -> Decoder:
     return KeyValueDecoder()
 
 
+def list_ids(sources: Sequence[Source], wait: float = 10.0) -> dict[str, object]:
+    """The ids the sources make and their values, from one read of each."""
+    if not sources:
+        raise ValueError(
+            "--list needs a source: --rest, --ads, --serial, --zmq or --config"
+        )
+
+    async def first(source: Source) -> dict[str, object]:
+        snapshot = getattr(source, "snapshot", None)
+        if snapshot is not None:
+            return await snapshot()
+        updates = source.updates()
+        try:
+            async with asyncio.timeout(wait):
+                batch = await anext(updates)
+        except TimeoutError:
+            raise ValueError(f"{source!r} sent nothing in {wait:g} s") from None
+        finally:
+            await updates.aclose()
+        found: dict[str, object] = {}
+        for update in batch:
+            found.update(update)
+        return found
+
+    async def every() -> dict[str, object]:
+        found: dict[str, object] = {}
+        for source in sources:
+            found.update(await first(source))
+        return found
+
+    try:
+        return asyncio.run(every())
+    except Exception as error:
+        if type(error).__name__ == "Failed":  # sources._poll, which needs aiohttp
+            raise ValueError(str(error)) from None
+        raise
+
+
+def print_ids(values: dict[str, object]) -> None:
+    for name, value in values.items():
+        print(f"{name} = {'null' if value is None else value}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     if args.guide:
@@ -520,6 +574,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             plot(args)
         elif args.demo == "load":
             load(args)
+        elif args.list:
+            if args.demo:
+                raise ValueError("--list reads real sources, not --demo")
+            print_ids(list_ids(build(args)[1]))
         else:
             monitor, sources, outputs = build(args)
             monitor.serve(sources=sources, outputs=outputs)
