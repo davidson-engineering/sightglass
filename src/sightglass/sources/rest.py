@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import suppress
 from dataclasses import KW_ONLY, dataclass
@@ -17,7 +16,16 @@ import aiohttp
 
 from ..elements import Element, LogMonitor
 from ..monitor import Update
-from ._poll import Failed, Feed, describe, parse, poll, read_body
+from ._poll import (
+    Failed,
+    Feed,
+    Rates,
+    compile_patterns,
+    describe,
+    parse,
+    poll,
+    read_body,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +46,11 @@ class Endpoint:
     (``*`` stands for any characters), matched against the whole id, prefix
     included: only ids that match an ``include`` (all, if there is none) and no
     ``exclude`` are kept, so the rest never reach a page or ``max_elements``.
+
+    ``rate`` lists ids or patterns of counters that only grow (requests served,
+    bytes sent): each shows the change per second between polls, under its own
+    id. The first poll, a count that went down (a restart) and a value that is
+    not a number show nothing.
 
     ``interval`` overrides the source's, for a slow-changing endpoint. A reply
     with a status outside 2xx is ignored unless listed in ``accept``: a health
@@ -67,6 +80,7 @@ class Endpoint:
     accept: tuple[int, ...] = ()
     include: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
+    rate: tuple[str, ...] = ()
     events: str | None = None
     cursor: str = "id"
     line: str = ""
@@ -184,6 +198,7 @@ class RestSource:
             queue,
             endpoint.url,
             feed,
+            Rates(endpoint.rate) if endpoint.rate else None,
         )
 
     async def _fetch(
@@ -344,15 +359,7 @@ def extract(document: Any, endpoint: Endpoint) -> Update:
 def _matcher(
     include: tuple[str, ...], exclude: tuple[str, ...]
 ) -> Callable[[str], bool]:
-    def compile(patterns: tuple[str, ...]) -> re.Pattern[str] | None:
-        if not patterns:
-            return None
-        parts = (
-            "".join(".*" if c == "*" else re.escape(c) for c in p) for p in patterns
-        )
-        return re.compile("|".join(f"(?:{part})" for part in parts), re.DOTALL)
-
-    wanted, unwanted = compile(include), compile(exclude)
+    wanted, unwanted = compile_patterns(include), compile_patterns(exclude)
 
     def keep(name: str) -> bool:
         return (wanted is None or wanted.fullmatch(name) is not None) and (

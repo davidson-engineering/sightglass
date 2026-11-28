@@ -20,6 +20,7 @@ SOURCE_KEYS = {
         "accept",
         "include",
         "exclude",
+        "rate",
         "headers",
         "events",
         "cursor",
@@ -70,7 +71,7 @@ def _rest(table: dict[str, Any], where: str, base: Path) -> Source:
     if not isinstance(accept, list) or not all(isinstance(s, int) for s in accept):
         raise ValueError(f"accept in {where} must be a list of status codes")
     patterns = {}
-    for name in ("include", "exclude"):
+    for name in ("include", "exclude", "rate"):
         value = table.get(name, [])
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             raise ValueError(f"{name} in {where} must be a list of id patterns")
@@ -111,6 +112,7 @@ def _endpoint(
         accept=tuple(accept),
         include=patterns["include"],
         exclude=patterns["exclude"],
+        rate=patterns["rate"],
         events=table.get("events"),
         cursor=table.get("cursor", "id"),
         line=table.get("line", ""),

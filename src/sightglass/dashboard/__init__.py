@@ -40,12 +40,16 @@ need their extras (``rest`` needs aiohttp), and serving it needs ``web``.
 
 from __future__ import annotations
 
+import asyncio
+import difflib
+import fnmatch
 import hashlib
+import logging
 import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..elements import Element
 from ..monitor import MAX_ELEMENTS, THEMES, TITLE, Monitor, Source
@@ -58,6 +62,8 @@ if TYPE_CHECKING:
     from ..web import WebDashboard
 
 __all__ = ["Dashboard", "Panel", "Section", "load", "render"]
+
+logger = logging.getLogger(__name__)
 
 TOP_KEYS = {
     "title",
@@ -136,6 +142,40 @@ class Dashboard:
         monitor.history = History(self.history, only=self.plotted())
         return monitor
 
+    def unmatched(self, ids: list[str]) -> list[str]:
+        """One warning for each panel with an id or pattern that matches none
+        of ``ids``, with the closest id when there is one."""
+        warnings = []
+        for section in self.sections:
+            for panel in section.panels:
+                missing = [
+                    pattern
+                    for pattern in panel.ids
+                    if not fnmatch.filter(ids, pattern.replace("[", "[[]"))
+                ]
+                if not missing:
+                    continue
+                where = f'panel "{panel.title}"'
+                if section.title:
+                    where += f' (section "{section.title}")'
+                text = ", ".join(f"'{pattern}'" for pattern in missing)
+                message = f"{where}: no id {text}"
+                close = difflib.get_close_matches(missing[0], ids, 1)
+                if close:
+                    message += f"; did you mean '{close[0]}'?"
+                warnings.append(message)
+        return warnings
+
+    def audit(self) -> Audit | None:
+        """An output that warns about panels whose ids match nothing, once
+        every source has answered; ``None`` unless every source polls (the
+        others can deliver an id at any time, so nothing is known to be
+        missing)."""
+        per_source = [getattr(source, "feeds", None) for source in self.sources]
+        if not per_source or not all(per_source):
+            return None
+        return Audit(self, [feed for feeds in per_source for feed in feeds])
+
     def web(
         self,
         *,
@@ -168,8 +208,35 @@ class Dashboard:
         return its monitor, for ``set()`` and ``stop()``. ``where`` is
         :meth:`web`'s: ``host``, ``port``, ``token`` and so on."""
         monitor = self.monitor()
-        monitor.start(sources=self.sources, outputs=[self.web(**where)])
+        outputs: list[Any] = [self.web(**where)]
+        if audit := self.audit():
+            outputs.append(audit)
+        monitor.start(sources=self.sources, outputs=outputs)
         return monitor
+
+
+class Answering(Protocol):
+    """What a polling source's feed offers the audit (``sources._poll.Feed``)."""
+
+    async def first_answer(self) -> None: ...
+
+
+class Audit:
+    """An output that, once every polling source has had a successful poll,
+    warns once for each panel that shows no id (``Dashboard.unmatched``)."""
+
+    SETTLE = 0.25  # seconds for the first replies' values to be applied
+
+    def __init__(self, dashboard: Dashboard, feeds: list[Answering]) -> None:
+        self.dashboard = dashboard
+        self.feeds = feeds
+
+    async def run(self, monitor: Monitor) -> None:
+        await asyncio.gather(*(feed.first_answer() for feed in self.feeds))
+        await asyncio.sleep(self.SETTLE)
+        for warning in self.dashboard.unmatched(monitor.signals.ids()):
+            logger.warning("%s", warning)
+        await asyncio.Event().wait()  # an output runs until cancelled
 
 
 def load(path: str | Path) -> Dashboard:
@@ -312,12 +379,12 @@ def _sections(data: dict[str, Any]) -> list[Section]:
         title = table.get("title", "")
         if not isinstance(title, str):
             raise ValueError(f"title in {where} must be text")
-        if panels := _panels(tables(table, "panel")):
+        if panels := _panels(tables(table, "panel"), title):
             found.append(Section(title, panels))
         else:
             raise ValueError(f"{where} needs at least one [[section.panel]]")
     return found
 
 
-def _panels(found: list[dict[str, Any]]) -> tuple[Panel, ...]:
-    return tuple(p for i, table in enumerate(found) for p in build(table, i))
+def _panels(found: list[dict[str, Any]], section: str = "") -> tuple[Panel, ...]:
+    return tuple(p for i, table in enumerate(found) for p in build(table, i, section))

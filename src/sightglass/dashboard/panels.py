@@ -105,10 +105,16 @@ class Panel:
         return [TextElement(self.ids[0], format=TextFormat(precision=self.precision))]
 
 
-def build(table: dict[str, Any], index: int) -> list[Panel]:
+def build(table: dict[str, Any], index: int, section: str = "") -> list[Panel]:
     """The panels a ``[[panel]]`` table stands for: one, or one per name in
-    ``each``."""
-    where = f"[[panel]] {index + 1}"
+    ``each``. Errors name the ``section`` and the panel's title, if it has
+    them."""
+    given = table.get("title")
+    named = f' "{given}"' if given and isinstance(given, str) else ""
+    if section:
+        where = f'section "{section}", panel {index + 1}{named}'
+    else:
+        where = f"[[panel]] {index + 1}{named}"
     kind = table.get("type", "trend")
     if kind not in PANEL_TYPES:
         raise ValueError(

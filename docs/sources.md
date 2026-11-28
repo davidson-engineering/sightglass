@@ -96,11 +96,18 @@ Corrupt frames are skipped and decoding resumes at the next `0xAA`.
 - **Ids:** nested objects become dotted ids, and lists of objects are keyed by
   their `id` field (which is not an id itself: `sensors.s0.rate`, no
   `sensors.s0.id`). `Endpoint(url, prefix=, select=, key=, include=,
-  exclude=, interval=, accept=)` tunes one URL; `headers={...}` sends an API key or bearer token.
+  exclude=, rate=, interval=, accept=)` tunes one URL; `headers={...}` sends an API key or bearer token.
 - **Choosing ids:** `include` and `exclude` are lists of id patterns (`*` for
   any characters, matched against the whole id, prefix included); an id is kept
   if it matches an `include` (or there is none) and no `exclude`. Dropped
   fields never reach the page or `max_elements`.
+- **Counters as rates:** `rate` lists ids or patterns of counters that only
+  grow (`rate = ["requests_total", "events.by_level.*"]`; `Endpoint(rate=[...])`
+  in Python). The id keeps its name and shows the change per second between
+  polls, from the polls' own times, in place of the count. The first poll, a
+  count that went down (a restart: the rate starts again from the new count)
+  and a value that is not a number show nothing (a gap in a plot). Not on
+  `--rest`, `monitor.set()` or InfluxDB sources.
 - **Event feeds:** a list of the last N events (newest last) would make
   five ids per event and keep them after the event leaves the list, so give
   it `events` instead: `Endpoint(url, events="events", cursor="id",

@@ -1,15 +1,18 @@
 import asyncio
 import io
 import os
+import re
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from sightglass import (
+    LogMonitor,
     MachineState,
     Monitor,
     ProgressBar,
     RangeBar,
+    Sparkline,
     TerminalDisplay,
     TextElement,
     WebDashboard,
@@ -380,6 +383,21 @@ async def test_web_returns_current_values_as_json(client):
     assert values["X.velocity"] == {"text": "12.00 mm/s", "ratio": 0.12}
 
 
+async def test_values_put_units_in_the_text_of_every_element(client):
+    client.monitor.add(
+        TextElement("uptime", units="s"),
+        Sparkline("cpu", units="%"),
+        RangeBar("temp", units="C"),
+        ProgressBar("done"),
+    )
+    client.monitor.update({"uptime": 7, "cpu": 8.8, "temp": 50, "done": 5})
+    values = await (await client.get("/values")).json()
+    assert values["uptime"] == "7 s"
+    assert values["cpu"]["text"] == "8.8 %"
+    assert values["temp"]["text"] == "50.00 C"
+    assert values["done"]["text"].endswith("%")
+
+
 def test_open_browser_opens_the_dashboard_once_it_is_up(monkeypatch):
     opened = []
     monkeypatch.setattr("webbrowser.open", opened.append)
@@ -454,3 +472,40 @@ async def test_the_signals_stream_says_whether_to_show_figures():
             snapshot = await ws.receive_json(timeout=1)
             assert snapshot["debug"] is debug
             await ws.close()
+
+
+def test_terminal_generic_layout_never_scrolls(monkeypatch):
+    """Declared elements come first; what doesn't fit is counted, not scrolled."""
+    monkeypatch.setattr("shutil.get_terminal_size", lambda: os.terminal_size((80, 24)))
+    monitor = make_monitor()
+    monitor.update({"speed": 5, "X.velocity": 50, "job": 25})
+    for n in range(30):
+        monitor.set(f"res.app.workers.worker-{n}", n)
+    frame = TerminalDisplay().render(monitor).split("\n")
+    assert len(frame) == 24
+    assert frame[0] == "Speed: 5"
+    assert any("velocity" in line for line in frame)
+    assert re.fullmatch(r"\+ \d+ more ids", frame[-1])
+    shown = sum("worker-" in line for line in frame)
+    assert shown + int(frame[-1].split()[1]) >= 30
+
+
+def test_terminal_group_of_multiline_elements_is_cut_to_the_screen(monkeypatch):
+    """A group cut partway counts its elements' lines, not the elements."""
+    monkeypatch.setattr("shutil.get_terminal_size", lambda: os.terminal_size((80, 24)))
+    monitor = Monitor()
+    monitor.add_group("logs", [LogMonitor(f"log{n}", lines=5) for n in range(6)])
+    for n in range(6):
+        for line in range(5):
+            monitor.set(f"logs.log{n}", f"entry {line}")
+    frame = TerminalDisplay().render(monitor).split("\n")
+    assert len(frame) <= 24
+    assert re.fullmatch(r"\+ \d+ more ids?", frame[-1])
+
+
+def test_terminal_log_is_not_padded(monkeypatch):
+    monkeypatch.setattr("shutil.get_terminal_size", lambda: os.terminal_size((80, 24)))
+    monitor = Monitor()
+    monitor.add(LogMonitor("events", lines=10))
+    monitor.set("events", "one")
+    assert TerminalDisplay().render(monitor).count("\n") == 1  # heading + entry

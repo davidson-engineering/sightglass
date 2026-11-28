@@ -15,6 +15,8 @@ import pytest
 from playwright.async_api import async_playwright, expect
 
 from sightglass import (
+    Coordinate,
+    Counters,
     IndicatorLamp,
     LogMonitor,
     Monitor,
@@ -256,6 +258,29 @@ async def test_generic_page_shows_the_programs_own_resources(page, serve):
     await expect(page.locator(".row", has_text="Uptime")).to_contain_text(" s")
 
 
+@pytest.mark.parametrize("theme", ["classic", "terminal"])
+async def test_counters_share_one_row_and_wrap_on_a_phone(page, serve, theme):
+    monitor = Monitor()
+    fields = ["submitted", "done", "retried", "failed"]
+    monitor.add(Counters("jobs.totals", fields, label="Totals"))
+    monitor.update(
+        {f"jobs.totals.{f}": n for f, n in zip(fields, (44, 41, 3, 2), strict=True)}
+    )
+    await page.goto(serve(None, monitor, theme=theme))
+    cells = page.locator(".counter b")
+    await expect(cells).to_have_text(["44", "41", "3", "2"])
+
+    async def tops():
+        return await page.locator(".counter").evaluate_all(
+            "els => els.map(e => Math.round(e.getBoundingClientRect().top))"
+        )
+
+    assert len(set(await tops())) == 1  # desktop: one row
+    await page.set_viewport_size({"width": 390, "height": 800})
+    narrow = await page.evaluate("document.documentElement.scrollWidth")
+    assert narrow <= 390  # wraps rather than overflowing
+
+
 async def test_generic_page_offers_the_terminal_theme(page, serve):
     monitor = Monitor()
     monitor.add(ProgressBar("job", label="Job"))
@@ -314,6 +339,29 @@ async def test_generic_page_draws_declared_and_new_elements(page, serve):
     await expect(page.locator(".row", has_text="Job")).to_contain_text("25.0%")
     await expect(page.locator(".row", has_text="status")).to_contain_text("ok")
     await expect(page.locator("#connection")).to_have_text("Live")
+
+
+async def test_generic_page_shows_units_once_for_each_element(page, serve):
+    monitor = Monitor()
+    monitor.add(
+        TextElement("uptime", label="Uptime", units="s"),
+        Sparkline("cpu", label="Cpu", units="%"),
+        RangeBar("temp", label="Temp", units="degC"),
+        ProgressBar("job", label="Job"),
+        Coordinate("pos", label="Pos", axes=("x",), units="mm"),
+    )
+    await page.goto(serve(None, monitor))
+    monitor.update({"uptime": 7, "cpu": 8.8, "temp": 50, "job": 25, "pos": {"x": 1}})
+    for label, text in [
+        ("Uptime", "7 s"),
+        ("Cpu", "8.8 %"),
+        ("Temp", "50.00 degC"),
+        ("Job", "25.0%"),
+        ("Pos", "X +1.0000 mm"),
+    ]:
+        row = page.locator(".row", has_text=label)
+        await expect(row).to_contain_text(text)
+        assert (await row.inner_text()).count(text.split()[-1]) == 1
 
 
 async def test_log_binding_marks_each_lines_level(page, serve):

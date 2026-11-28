@@ -169,6 +169,7 @@ monitor.start()
 | `RangeBar` | a marker on a track from `min` to `max` | a number |
 | `IndicatorLamp` | on/off | `True`/`False`, `1`/`0`, `on`/`off` |
 | `MachineState` | named on/off states packed into one integer | an integer (bit 0 = first state) |
+| `Counters` | a row of labelled counts | a mapping, or per field: `"<id>.done"` |
 | `Coordinate` | a multi-axis position | a list, or per axis: `"<id>.x"` |
 | `Table` | a grid of cells | per cell: `"<id>.<row>.<column>"` |
 | `LogMonitor` | the latest messages, warnings and errors in colour | a string; `LogHandler` sends log records |
