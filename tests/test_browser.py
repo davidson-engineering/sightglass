@@ -1172,3 +1172,23 @@ async def test_a_trends_plots_follow_their_order_and_ratio_and_the_title_bar_mov
     found = await laid_out('title_bar = "bottom"\n', 'first = "primary"\n')
     assert found["primary"][0] < found["secondary"][0]  # primary on top
     assert found["header"][0] > found["primary"][0]  # the title bar is below
+
+
+async def test_stale_after_is_refreshed_by_ids_that_arrive_only_as_fresh(page, serve):
+    monitor = Monitor()
+    monitor.add(TextElement("wind"))
+    url = serve(
+        '<span id="wind" data-bind="wind" data-stale-after="1"></span>', monitor
+    )
+    frames = []
+    page.on("websocket", lambda ws: ws.on("framereceived", lambda f: frames.append(f)))
+    await page.goto(url)
+    wind = page.locator("#wind")
+    monitor.set("wind", 12)
+    await expect(wind).to_have_text("12")
+    for _ in range(8):  # the same value again: sent as fresh, not as a value
+        monitor.set("wind", 12)
+        await asyncio.sleep(0.25)
+        await expect(wind).not_to_have_attribute("data-stale", "true")
+    assert any('"fresh": ["wind"]' in str(frame) for frame in frames)
+    await expect(wind).to_have_attribute("data-stale", "true")  # then it stops

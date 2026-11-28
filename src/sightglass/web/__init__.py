@@ -394,19 +394,33 @@ class WebDashboard:
             0  # updates sent folded into another: the page was too slow, or the cap
         )
         try:
-            await ws.send_json(self._snapshot(monitor))
+            snapshot = self._snapshot(monitor)
+            await ws.send_json(snapshot)
+            sent = dict(snapshot["values"])  # what this page last received, by id
             self._record_sent(id(ws), version)
             while not ws.closed:
                 latest = await monitor.wait_for_change(version)
                 if monitor.layout_version != layout:  # elements added: redraw
                     layout = monitor.layout_version
-                    await ws.send_json(self._snapshot(monitor))
+                    snapshot = self._snapshot(monitor)
+                    await ws.send_json(snapshot)
+                    sent = dict(snapshot["values"])
                 else:
                     merged += latest - version - 1
+                    values: dict[str, Any] = {}
+                    fresh: list[str] = []
+                    for key, value in monitor.changes_since(version).items():
+                        # Arrived again unchanged: the page only needs to know
+                        # it arrived (for data-stale-after), not the value.
+                        if key in sent and sent[key] == value:
+                            fresh.append(key)
+                        else:
+                            values[key] = sent[key] = value
                     await ws.send_json(
                         {
                             "type": "update",
-                            "values": monitor.changes_since(version),
+                            "values": values,
+                            "fresh": fresh,
                             "merged": merged,
                         }
                     )

@@ -142,7 +142,10 @@ The dashboard keeps history only for the ids its `trend` panels plot. A
 dashboard of plots alone opens no live-values connection, so a source with
 thousands of ids costs little more than polling it. A `value`, `lamp` or
 `gauge` needs the live connection, which sends every id the source makes to the
-page, so keep those dashboards to sources with a few hundred ids.
+page (an id that arrives again unchanged costs its name, about 30 bytes, and
+a changed one its value too), so keep those dashboards to sources with a few
+hundred ids: 900 ids polled every 0.2 s send each open page about 150 KB/s
+([performance.md](performance.md)).
 
 ## Settings at the top of the file
 

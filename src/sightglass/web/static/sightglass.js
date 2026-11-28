@@ -60,6 +60,7 @@
   const valuesOff = document.currentScript?.dataset.values === "off";
   let bindings = new Map();
   let watched = []; // bound elements with data-stale-after
+  const keysOf = new Map(); // id -> the flattened keys its value binds as
   const arrived = new Map(); // bound key -> Date.now() when its value last arrived
   let lastData = null;
   let staleAfter = null;
@@ -179,12 +180,18 @@
   // ages: seconds since each element was updated (null: never), sent with
   // snapshots so a page that has just connected knows what's old; values in
   // updates have just arrived.
-  function apply(values, ages = {}) {
+  // fresh: ids that arrived again with the value the page already has.
+  function apply(values, ages = {}, fresh = []) {
     const now = Date.now();
     const flat = {};
+    for (const id of fresh) {
+      for (const key of keysOf.get(id) ?? []) arrived.set(key, now);
+    }
     for (const [id, value] of Object.entries(values)) {
       const age = ages[id] === undefined ? 0 : ages[id];
-      for (const [key, inner] of Object.entries(flatten(id, value, {}))) {
+      const keys = Object.entries(flatten(id, value, {}));
+      keysOf.set(id, keys.map(([key]) => key));
+      for (const [key, inner] of keys) {
         flat[key] = inner;
         if (age === null) arrived.delete(key);
         else arrived.set(key, now - age * 1000);
@@ -237,7 +244,7 @@
         collectBindings();
         startPlots();
       }
-      apply(message.values, message.ages);
+      apply(message.values, message.ages, message.fresh);
       document.dispatchEvent(
         new CustomEvent("monitor:message", {
           detail: { queued, handled: performance.now() - began, merged: message.merged ?? 0 },
