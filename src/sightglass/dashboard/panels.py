@@ -7,6 +7,7 @@ A panel is one tile of the page. Its type says what it shows:
 ``value``       one id's current value as large text
 ``lamp``        one id as an on/off light
 ``gauge``       one id as a bar between a minimum and a maximum
+``log``         one id's recent lines of text, newest last
 
 Each type has its keys (:data:`PANEL_KEYS`), a function that reads a table
 into a :class:`Panel` (:data:`PANELS`) and one that draws it as HTML
@@ -20,7 +21,7 @@ import html
 from dataclasses import dataclass, replace
 from typing import Any, NamedTuple
 
-from ..elements import Element, TextElement
+from ..elements import Element, LogMonitor, TextElement
 from ..formatting import TextFormat
 from ._config import number, only
 
@@ -39,11 +40,12 @@ PANEL_KEYS = {
     "value": COMMON | {"id", "units", "precision"},
     "lamp": COMMON | {"id"},
     "gauge": COMMON | {"id", "units", "precision", "min", "max"},
+    "log": COMMON | {"id", "lines", "timestamp"},
 }
 PANEL_TYPES = tuple(PANEL_KEYS)
 MODES = ("lines", "heatmap")
 FIRST = ("secondary", "primary")  # which plot of a trend is on top
-WEIGHT = {"trend": 3}  # how much of a section's height a panel's row asks for
+WEIGHT = {"trend": 3, "log": 2}  # how much of a section's height a panel's row asks for
 
 
 class Plot(NamedTuple):
@@ -72,6 +74,8 @@ class Panel:
     precision: int | None = None  # value, gauge: decimals shown
     low: float = 0.0  # gauge: the value at the bar's empty end
     high: float = 100.0  # gauge: and at its full end
+    lines: int = 10  # log: how many lines it keeps
+    timestamp: bool = False  # log: put the time before each line
 
     @property
     def plots(self) -> tuple[Plot, ...]:
@@ -93,7 +97,9 @@ class Panel:
 
     def elements(self) -> list[Element]:
         """The monitor elements it needs declared, if it needs any: a number
-        shown to a fixed number of decimals."""
+        shown to a fixed number of decimals, or a log of its length."""
+        if self.type == "log":
+            return [LogMonitor(self.ids[0], lines=self.lines, timestamp=self.timestamp)]
         if self.precision is None:
             return []
         return [TextElement(self.ids[0], format=TextFormat(precision=self.precision))]
@@ -221,11 +227,22 @@ def _gauge(table: dict[str, Any], where: str) -> dict[str, Any]:
     }
 
 
+def _log(table: dict[str, Any], where: str) -> dict[str, Any]:
+    lines = table.get("lines", 10)
+    if isinstance(lines, bool) or not isinstance(lines, int) or lines < 1:
+        raise ValueError(f"lines in {where} must be a whole number, 1 or more")
+    timestamp = table.get("timestamp", False)
+    if not isinstance(timestamp, bool):
+        raise ValueError(f"timestamp in {where} must be true or false")
+    return {"ids": _one_id(table, where), "lines": lines, "timestamp": timestamp}
+
+
 PANELS = {
     "trend": _trend,
     "value": _value,
     "lamp": _lamp,
     "gauge": _gauge,
+    "log": _log,
 }
 
 
@@ -286,9 +303,17 @@ def _draw_gauge(panel: Panel) -> str:
     return _frame(panel, f"{_reading_html(panel)}\n{bar}")
 
 
+def _draw_log(panel: Panel) -> str:
+    id = html.escape(panel.ids[0], quote=True)
+    return _frame(
+        panel, f'      <div class="lines" data-bind="{id}" data-mode="log"></div>'
+    )
+
+
 DRAW = {
     "trend": _draw_trend,
     "value": _draw_value,
     "lamp": _draw_lamp,
     "gauge": _draw_gauge,
+    "log": _draw_log,
 }

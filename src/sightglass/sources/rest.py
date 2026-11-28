@@ -6,12 +6,15 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import suppress
 from dataclasses import KW_ONLY, dataclass
-from functools import lru_cache
+from functools import cmp_to_key, lru_cache
+from string import Formatter
 from typing import Any
 
 import aiohttp
 
+from ..elements import Element, LogMonitor
 from ..monitor import Update
 from ._poll import (
     Failed,
@@ -52,6 +55,20 @@ class Endpoint:
     ``interval`` overrides the source's, for a slow-changing endpoint. A reply
     with a status outside 2xx is ignored unless listed in ``accept``: a health
     check that answers 503 when something is down is still data.
+
+    A list of events (the last N, newest last) is not a set of values: with
+    ``events`` (the dotted path to the list, counted from ``select``; ``""`` for
+    a reply that is the list itself) each event becomes one line of text sent to
+    one :class:`~sightglass.LogMonitor`, named ``id`` or else ``prefix``, and
+    makes no ids of its own. Only events whose ``cursor`` field is greater than
+    the last one seen are sent, oldest first, so each appears once (numbers
+    compare as numbers, anything else as text, so ISO times sort); the first
+    poll sends them all, and a reply whose newest cursor is lower than the last
+    seen is a service that restarted, and is followed from the start. An event
+    without the cursor field is skipped. ``line`` is a ``str.format`` template
+    over the event's fields (``"{time} {level}: {message}"``; a missing field is
+    empty); the default is the event as compact JSON. The reply's other fields
+    become ids as usual.
     """
 
     url: str
@@ -64,6 +81,29 @@ class Endpoint:
     include: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
     rate: tuple[str, ...] = ()
+    events: str | None = None
+    cursor: str = "id"
+    line: str = ""
+    id: str = ""
+
+    def __post_init__(self) -> None:
+        if self.events is None:
+            if self.line or self.id:
+                raise ValueError("line and id go with events")
+            return
+        if not (self.id or self.prefix):
+            raise ValueError("events needs an id or a prefix to name the log")
+        if not self.cursor:
+            raise ValueError("cursor must name a field")
+        try:
+            list(Formatter().parse(self.line))
+        except ValueError as error:
+            raise ValueError(f"line is not a format string: {error}") from None
+
+    @property
+    def log(self) -> str:
+        """The id of the log the events go to."""
+        return self.id or self.prefix
 
 
 class RestSource:
@@ -110,6 +150,12 @@ class RestSource:
         self.headers = dict(headers or {})
         self.timeout = timeout
         self.feeds = [Feed(endpoint.url) for endpoint in self.endpoints]
+        self.elements: list[Element] = [
+            LogMonitor(endpoint.log, lines=20)
+            for endpoint in self.endpoints
+            if endpoint.events is not None
+        ]
+        self._seen: dict[int, list[Any]] = {}  # per endpoint: the last cursor
 
     async def updates(self) -> AsyncIterator[list[Update]]:
         queue: asyncio.Queue[Update] = asyncio.Queue()
@@ -138,8 +184,16 @@ class RestSource:
         queue: asyncio.Queue[Update],
         feed: Feed,
     ) -> None:
+        seen = self._seen.setdefault(id(endpoint), [None])
+
+        async def fetch() -> Update:
+            values, lines = await self._fetch(session, endpoint, seen)
+            for line in lines:
+                queue.put_nowait({endpoint.log: line})
+            return values
+
         await poll(
-            lambda: self._fetch(session, endpoint),
+            fetch,
             endpoint.interval or self.interval,
             queue,
             endpoint.url,
@@ -148,8 +202,8 @@ class RestSource:
         )
 
     async def _fetch(
-        self, session: aiohttp.ClientSession, endpoint: Endpoint
-    ) -> Update:
+        self, session: aiohttp.ClientSession, endpoint: Endpoint, seen: list[Any]
+    ) -> tuple[Update, list[str]]:
         try:
             async with session.get(endpoint.url) as response:
                 if not response.ok and response.status not in endpoint.accept:
@@ -160,7 +214,7 @@ class RestSource:
                 body = await read_body(response, self.max_bytes)
         except (aiohttp.ClientError, TimeoutError) as error:
             raise Failed(describe(error)) from None
-        return await parse(len(body), _document, body, endpoint)
+        return await parse(len(body), _document, body, endpoint, seen)
 
     async def snapshot(self) -> Update:
         """Every endpoint polled once: the ids they make, with their values.
@@ -171,7 +225,10 @@ class RestSource:
         ) as session:
             for endpoint in self.endpoints:
                 try:
-                    values.update(await self._fetch(session, endpoint))
+                    found, lines = await self._fetch(session, endpoint, [None])
+                    values.update(found)
+                    if endpoint.events is not None:
+                        values[endpoint.log] = lines[-1] if lines else ""
                 except Failed as error:
                     raise Failed(f"{endpoint.url}: {error}") from None
         return values
@@ -181,20 +238,24 @@ class RestSource:
         return f"RestSource({urls})"
 
 
-def _document(body: bytes, endpoint: Endpoint) -> Update:
-    """The ids in a reply's JSON: all of a poll's parsing, so it can be run off
-    the event loop."""
+def _document(
+    body: bytes, endpoint: Endpoint, seen: list[Any]
+) -> tuple[Update, list[str]]:
+    """The ids and the new event lines in a reply's JSON: all of a poll's
+    parsing, so it can be run off the event loop. ``seen`` holds the last event
+    cursor, and is moved on."""
     try:
         document = json.loads(body)
     except ValueError as error:
         raise Failed(f"not JSON: {error}") from None
-    return extract(document, endpoint)
+    values = extract(document, endpoint)
+    if endpoint.events is None:
+        return values, []
+    return values, new_events(document, endpoint, seen)
 
 
-def extract(document: Any, endpoint: Endpoint) -> Update:
-    """The ``{id: value}`` an endpoint's JSON document stands for; ``null`` is
-    None, for invalid data."""
-    for part in filter(None, endpoint.select.split(".")):
+def _walk(document: Any, path: str) -> Any:
+    for part in filter(None, path.split(".")):
         if isinstance(document, Mapping) and part in document:
             document = document[part]
         elif (
@@ -202,7 +263,90 @@ def extract(document: Any, endpoint: Endpoint) -> Update:
         ):
             document = document[int(part)]
         else:
-            raise Failed(f"no {endpoint.select!r} in the reply")
+            raise Failed(f"no {path!r} in the reply")
+    return document
+
+
+def _without(node: Any, parts: list[str]) -> Any:
+    """``node`` without what ``parts`` lead to, copying only along the path."""
+    if not parts:
+        return {}
+    if isinstance(node, Mapping):
+        return {
+            k: _without(v, parts[1:]) if k == parts[0] else v for k, v in node.items()
+        }
+    return node
+
+
+def new_events(document: Any, endpoint: Endpoint, seen: list[Any]) -> list[str]:
+    """The lines for the events in ``document`` that come after the cursor in
+    ``seen[0]``, oldest first; ``seen`` is moved to the newest cursor."""
+    found = _walk(_walk(document, endpoint.select), endpoint.events or "")
+    if not isinstance(found, list):
+        raise Failed(f"{endpoint.events!r} in the reply is not a list")
+    events = [
+        e for e in found if isinstance(e, Mapping) and _cursor(e, endpoint) is not None
+    ]
+    if not events:
+        return []
+    events.sort(
+        key=cmp_to_key(
+            lambda a, b: _compare(_cursor(a, endpoint), _cursor(b, endpoint))
+        )
+    )
+    newest = _cursor(events[-1], endpoint)
+    last = seen[0]
+    if last is not None and _compare(newest, last) < 0:
+        last = None  # the service restarted: follow it from the start
+    seen[0] = newest
+    return [
+        _line(e, endpoint.line)
+        for e in events
+        if last is None or _compare(_cursor(e, endpoint), last) > 0
+    ]
+
+
+def _cursor(event: Mapping[Any, Any], endpoint: Endpoint) -> Any:
+    """An event's cursor, or None if it has none it can be ordered by."""
+    value = event.get(endpoint.cursor)
+    if value is None or isinstance(value, bool | list | dict) or value == "":
+        return None
+    return value
+
+
+def _compare(a: Any, b: Any) -> int:
+    """-1, 0 or 1: as numbers if both are, else as text."""
+    if not (isinstance(a, int | float) and isinstance(b, int | float)):
+        a, b = str(a), str(b)
+    return (a > b) - (a < b)
+
+
+class _Fields(dict[str, Any]):
+    """An event's fields for ``format_map``: absent or null is empty."""
+
+    def __getitem__(self, name: str) -> Any:
+        value = self.get(name)
+        return "" if value is None else value
+
+
+def _line(event: Mapping[Any, Any], template: str) -> str:
+    text = None
+    if template:
+        with suppress(AttributeError, IndexError, TypeError, ValueError):
+            text = template.format_map(_Fields((str(k), v) for k, v in event.items()))
+    if text is None:
+        text = json.dumps(event, separators=(",", ":"), ensure_ascii=False)
+    return " ".join(text.splitlines())
+
+
+def extract(document: Any, endpoint: Endpoint) -> Update:
+    """The ``{id: value}`` an endpoint's JSON document stands for; ``null`` is
+    None, for invalid data. The list of ``events``, if any, makes no ids."""
+    document = _walk(document, endpoint.select)
+    if endpoint.events:
+        document = _without(document, endpoint.events.split("."))
+    elif endpoint.events == "":
+        document = {}
     values: dict[str, Any] = {}
     _flatten(document, endpoint.prefix, endpoint.key, values, drop_key=True)
     if endpoint.include or endpoint.exclude:

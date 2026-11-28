@@ -22,6 +22,10 @@ SOURCE_KEYS = {
         "exclude",
         "rate",
         "headers",
+        "events",
+        "cursor",
+        "line",
+        "id",
     },
     "ads": {"file", "target", "variables", "types", "ip", "interval", "timeout"},
     "zmq": {"endpoint", "pattern", "bind", "decoder", "fields", "names"},
@@ -61,7 +65,7 @@ def build(table: dict[str, Any], index: int, base: Path) -> Source:
 def _rest(table: dict[str, Any], where: str, base: Path) -> Source:
     if not isinstance(table.get("url"), str) or not table["url"]:
         raise ValueError(f"{where} needs a url")
-    from .. import Endpoint, RestSource
+    from .. import RestSource
 
     accept = table.get("accept", [])
     if not isinstance(accept, list) or not all(isinstance(s, int) for s in accept):
@@ -77,7 +81,29 @@ def _rest(table: dict[str, Any], where: str, base: Path) -> Source:
         isinstance(v, str) for v in headers.values()
     ):
         raise ValueError(f"headers in {where} must be a table of text")
-    endpoint = Endpoint(
+    for name in ("events", "cursor", "line", "id"):
+        if not isinstance(table.get(name, ""), str):
+            raise ValueError(f"{name} in {where} must be text")
+    if "events" not in table and {"cursor", "line", "id"} & table.keys():
+        raise ValueError(f"cursor, line and id in {where} go with events")
+    try:
+        endpoint = _endpoint(table, where, accept, patterns)
+    except ValueError as error:
+        raise ValueError(f"{where}: {error}") from None
+    return RestSource(
+        endpoint,
+        interval=endpoint.interval or 1.0,
+        headers=headers,
+        timeout=number(table, "timeout", 5.0, where),
+    )
+
+
+def _endpoint(
+    table: dict[str, Any], where: str, accept: list[int], patterns: dict[str, Any]
+) -> Any:
+    from .. import Endpoint
+
+    return Endpoint(
         table["url"],
         prefix=str(table.get("prefix", "")),
         select=str(table.get("select", "")),
@@ -87,12 +113,10 @@ def _rest(table: dict[str, Any], where: str, base: Path) -> Source:
         include=patterns["include"],
         exclude=patterns["exclude"],
         rate=patterns["rate"],
-    )
-    return RestSource(
-        endpoint,
-        interval=endpoint.interval or 1.0,
-        headers=headers,
-        timeout=number(table, "timeout", 5.0, where),
+        events=table.get("events"),
+        cursor=table.get("cursor", "id"),
+        line=table.get("line", ""),
+        id=table.get("id", ""),
     )
 
 
