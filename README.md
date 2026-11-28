@@ -27,7 +27,7 @@ uvx --from "sightglass[web]" sightglass --demo launch --open
 
 ## Install
 
-Python 3.11 or newer.
+Python 3.11 or newer; tested on 3.11 to 3.15.
 
 ```bash
 pip install "sightglass[web]"   # add serial, zmq, ads, rest, influxdb, or use [all]
