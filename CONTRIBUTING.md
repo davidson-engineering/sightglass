@@ -12,7 +12,7 @@ The serial tests use pseudo-terminals, so they run on macOS and Linux and are
 skipped on Windows. Forgejo CI (`.forgejo/workflows/check.yml`) runs
 `make check` on Python 3.11 on Linux for every pull request and push to
 `main`. The GitHub mirror's `.github/workflows/ci.yml` covers Python 3.11 to
-3.14, and macOS and Windows when run by hand (Actions > CI > Run workflow on
+3.15, and macOS and Windows when run by hand (Actions > CI > Run workflow on
 a branch pushed to the `github` remote): use it before merging a change to
 platform code (paths, processes, ctypes).
 
