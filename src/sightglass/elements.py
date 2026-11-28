@@ -115,16 +115,16 @@ class TextElement(Element):
 
     @property
     def text(self) -> str:
-        return (
+        text = (
             self.format.format(self.value) if self.format else default_text(self.value)
         )
+        return f"{text} {self.units}" if self.units and text else text
 
     def to_json(self) -> JSON:
         return self.text
 
     def render(self, width: int) -> str:
-        units = f" {self.units}" if self.units else ""
-        value = f"{styled(self.text, self.style)}{units}"
+        value = styled(self.text, self.style)
         if self.caption:  # the caller chose the layout
             return f"{self.caption}{value}"
         return f"{fit(self.label, self.label_width)} {value}"
@@ -497,8 +497,7 @@ class LogMonitor(Element):
         return "\n".join(self.entries)
 
     def render(self, width: int) -> str:
-        padded = [*self.entries, *[""] * (self.lines - len(self.entries))]
-        return "\n".join(self._styled(fit(entry, width)) for entry in padded)
+        return "\n".join(self._styled(fit(entry, width)) for entry in self.entries)
 
     @staticmethod
     def _styled(line: str) -> str:
@@ -690,10 +689,15 @@ class Coordinate(_Fields):
                 raise ValueError(f"expected {len(self.axes)} values, got {len(values)}")
             self.values.update(zip(self.axes, values, strict=True))
 
+    def _text(self, axis: str) -> str:
+        text = super()._text(axis)
+        if self.units and self.values[axis] is not None:
+            return f"{text} {self.units}"
+        return text
+
     def render(self, width: int) -> str:
-        units = f" {self.units}" if self.units else ""
         parts = [
-            f"{axis.upper()}: {styled(self._text(axis), self.style)}{units}"
+            f"{axis.upper()}: {styled(self._text(axis), self.style)}"
             for axis in self.axes
         ]
         return f"{self.label} " + " ".join(parts)

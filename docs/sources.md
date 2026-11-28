@@ -101,6 +101,10 @@ Corrupt frames are skipped and decoding resumes at the next `0xAA`.
   any characters, matched against the whole id, prefix included); an id is kept
   if it matches an `include` (or there is none) and no `exclude`. Dropped
   fields never reach the page or `max_elements`.
+- **Listing the ids:** `sightglass --rest URL --list` polls once, prints each
+  id with its value and exits (non-zero, one line, if the URL can't be read).
+  `--list` works with the other sources too (it prints the first message's
+  ids) and with `--config FILE`.
 - **Invalid data is blanked:** `null`, or an endpoint that can't be reached,
   blanks that id (a gap in a plot) rather than leaving its last value showing.
 - **A down endpoint** is logged once and retried.
