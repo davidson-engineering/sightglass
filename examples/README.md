@@ -198,7 +198,7 @@ and `SIGHTGLASS_ALLOW_WRITES=1`: see
 
 A whole dashboard in one TOML file: where the values come from (a web service
 that answers GET with JSON, polled five times a second) and what to show. No
-code and no page to write. Examples 10 to 12 are built the same way, and share
+code and no page to write. Examples 10 to 13 are built the same way, and share
 the words [the config docs](../docs/config.md#the-words-the-config-uses) define (dashboard, source, section, panel, plot): a
 folder with `dashboard.toml`, commented line by line, a stand-in for the real
 source (`fake_*.py`), so each runs with nothing else installed, and
@@ -263,3 +263,22 @@ INFLUX_TOKEN=... uv run --all-extras examples/influx_cells/dashboard.py http://h
 For your own bucket, edit the file's `org`, `bucket`, `measurement` and the ids
 its panels show. [Dashboards from a config file](../docs/config.md) describes
 every key.
+
+## 13. A web service: metrics, health check, event feed
+
+A service's three kinds of endpoint, which behave differently, as three
+`rest` sources in one config file: numbers (counters shown as a rate per
+second, a list of loads, a list of workers named by their `id`), a health
+check that answers 503 when something is down (`accept = [503]`, so the body
+still shows which check failed), and an event feed (`events`: each new event
+is a line of a `log` panel, with no id made per event).
+[web_service/](web_service/dashboard.toml) starts a fake service
+([web_service/fake_service.py](web_service/fake_service.py)); `--list` on the
+config prints the ids it makes.
+
+```bash
+git clone https://github.com/davidson-engineering/sightglass
+cd sightglass
+uv run --all-extras examples/web_service/dashboard.py          # the fake service
+uv run --all-extras examples/web_service/dashboard.py http://host:8000
+```

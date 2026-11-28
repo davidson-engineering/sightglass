@@ -1,0 +1,85 @@
+# A dashboard for a web service: its metrics, its health check and its event
+# feed, three endpoints that behave differently, so three sources. Written for
+# fake_service.py, or any service shaped like it.
+#
+# Run it with:   sightglass --config examples/web_service/dashboard.toml
+# (set SERVICE_URL to point it at your own service; dashboard.py starts the fake one)
+#
+# Not sure what ids a source makes? Add --list: it polls once and prints them.
+
+title = "Web service"
+
+# Metrics: numbers. Counters that only grow are shown as a change per second.
+# Lists of numbers give svc.load.0, svc.load.1; a list of objects with an "id"
+# gives svc.workers.worker-1.rss_mb (the id field itself is not an id).
+[[source]]
+type = "rest"
+url = "${SERVICE_URL:-http://127.0.0.1:8000}/metrics"
+prefix = "svc"
+rate = ["svc.service.requests_total", "svc.service.errors_total"]
+interval = 1
+
+# A health check answers 503 when something is down, and its body says what:
+# accept keeps that body instead of ignoring the reply.
+[[source]]
+type = "rest"
+url = "${SERVICE_URL:-http://127.0.0.1:8000}/health"
+prefix = "health"
+accept = [503]
+interval = 1
+
+# An event feed: a list of the last 20 events, newest last. With `events` each
+# new event becomes one line of the log "events", and no ids are made per event.
+[[source]]
+type = "rest"
+url = "${SERVICE_URL:-http://127.0.0.1:8000}/events"
+events = "events"                         # where the list is in the reply
+cursor = "id"                             # the field that orders events
+line = "{time} {level}: {message}"
+id = "events"
+interval = 1
+
+[[section]]
+title = "Health"
+
+[[section.panel]]
+type = "lamp"
+title = "Service"
+id = "health.ok"
+
+[[section.panel]]
+type = "lamp"
+each = ["database", "queue"]
+title = "{name}"
+id = "health.checks.{name}"
+
+[[section]]
+title = "Load"
+
+[[section.panel]]
+type = "value"
+title = "Requests a second"
+id = "svc.service.requests_total"
+precision = 0
+
+[[section.panel]]
+type = "gauge"
+each = ["worker-1", "worker-2", "worker-3"]
+title = "{name} busy"
+id = "svc.workers.{name}.busy_pct"
+units = "%"
+precision = 0
+
+[[section.panel]]
+title = "CPU load"
+ids = ["svc.load.*"]
+range = 60
+
+[[section]]
+title = "Events"
+
+[[section.panel]]
+type = "log"
+title = "Last events"
+id = "events"
+lines = 12

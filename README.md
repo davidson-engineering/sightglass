@@ -139,6 +139,7 @@ log.info("all jobs run: %d done, %d failed", done, failed)
 | a ZeroMQ publisher | `sightglass --zmq tcp://localhost:5556` (`--pull` for PUSH senders: nothing is lost) |
 | a Beckhoff TwinCAT PLC over ADS | `sightglass --ads 5.12.34.56.1.1 --vars 'MAIN.*'`, or an interface file: `sightglass --ads plc.toml` |
 | a JSON REST API | `sightglass --rest http://localhost:8000/metrics --rest-interval 2` |
+| a web service's metrics, health check and event feed | a [config file](#describe-a-dashboard-in-a-file) of `rest` sources: [examples/web_service/](https://github.com/davidson-engineering/sightglass/blob/main/examples/web_service/dashboard.toml) |
 | several sources, or InfluxDB | a [config file](#describe-a-dashboard-in-a-file) |
 
 Each needs its extra: `serial`, `zmq`, `ads` or `rest`.
@@ -165,8 +166,8 @@ monitor.start()
 | --- | --- | --- |
 | `TextElement` | a value, optionally scaled and formatted | any value |
 | `Sparkline` | a number and a chart of its recent values | a number |
-| `ProgressBar` | a bar filling from 0 to `total` | a number |
-| `RangeBar` | a marker on a track from `min` to `max` | a number |
+| `ProgressBar` | a bar filling from 0 to `total`: progress | a number |
+| `RangeBar` | a marker on a track from `min` to `max`: for a reading, such as a utilisation percentage | a number |
 | `IndicatorLamp` | on/off | `True`/`False`, `1`/`0`, `on`/`off` |
 | `MachineState` | named on/off states packed into one integer | an integer (bit 0 = first state) |
 | `Counters` | a row of labelled counts | a mapping, or per field: `"<id>.done"` |
