@@ -13,6 +13,7 @@ url = "${API_URL:-http://localhost:8000/api/readings}"
 prefix = "plant"                               # ids start "plant."
 select = "sensors"                             # start from this place in the JSON
 exclude = ["plant.*.firmware"]                 # id patterns to leave out (or include = [...])
+rate = ["plant.*.count"]                       # counters shown as a change per second
 interval = 0.5                                 # seconds between polls
 
 [[panel]]                                      # a trend, a panel per name
@@ -42,7 +43,7 @@ The code, the config and these docs all use these words:
 | **source** | where values come from: a `[[source]]` of a `type` (`rest`, `ads`, `zmq`, `serial`, `influxdb`) |
 | **id** | a value's name, such as `plant.North.value.0.1`; sources make them and panels show them |
 | **section** | a titled group of panels: `[[section]]`, with its panels as `[[section.panel]]` |
-| **panel** | one tile of the page: a `[[panel]]` of a `type` (`trend`, `value`, `lamp`, `gauge`) |
+| **panel** | one tile of the page: a `[[panel]]` of a `type` (`trend`, `value`, `lamp`, `gauge`, `log`) |
 | **plot** | what a `trend` panel draws, from the dashboard's history: a **primary** plot and, optionally, a **secondary** one |
 | **range** | the seconds of history a plot covers |
 | **element** | the monitor's own display model (`TextElement`, `RangeBar`, ...) that hand-written pages bind; a panel is not one, but a `value` panel with `precision` declares one |
@@ -69,6 +70,7 @@ one screen with nothing to scroll.
 | `value` | one id's current value as large text | `id`, `units`, `precision` (decimals) |
 | `lamp` | one id as a light: on for `true`, non-zero and `"on"`, off otherwise | `id` |
 | `gauge` | one id as a bar between a minimum and a maximum, with the value above it | `id`, `min` (default 0), `max` (default 100), `units`, `precision` |
+| `log` | one id's last lines of text, newest at the bottom: an event feed (a `LogMonitor`) | `id`, `lines` (default 10), `timestamp` (put the time before each line; default false) |
 
 Every panel also takes `title`, and `each`: a list of names that makes one
 panel per name, with `{name}` replaced in the title and in `id` or `ids`. A
@@ -122,12 +124,26 @@ blue wherever they are placed.
 
 With `secondary = false`, the other three secondary settings are an error.
 
+### A panel that shows nothing
+
+Once every source has answered a poll, sightglass warns (once, on stderr) about
+each panel whose id or pattern matches nothing, with the closest id it did
+receive:
+
+```text
+panel "CPU" (section "Host"): no id 'res.cpu_percent'; did you mean 'res.host.cpu_percent'?
+```
+
+It only checks when every `[[source]]` is a polling one (rest, influxdb); a
+source that can deliver an id at any time (zmq, serial, ads, `POST /update`)
+turns the check off.
+
 ### What panels cost
 
 The dashboard keeps history only for the ids its `trend` panels plot. A
 dashboard of plots alone opens no live-values connection, so a source with
-thousands of ids costs little more than polling it. A `value`, `lamp` or
-`gauge` needs the live connection, which sends every id the source makes to the
+thousands of ids costs little more than polling it. A `value`, `lamp`,
+`gauge` or `log` needs the live connection, which sends every id the source makes to the
 page, so keep those dashboards to sources with a few hundred ids.
 
 ## Settings at the top of the file
@@ -135,7 +151,7 @@ page, so keep those dashboards to sources with a few hundred ids.
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `title` | the page heading | `"Dashboard"` |
-| `version` | a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time | none |
+| `version` | a label for this dashboard's own version (a `v` goes before one that starts with a digit: `1.2` shows `v1.2`, `spike` stays `spike`), shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time | none |
 | `theme` | the look unless a viewer switches: `"classic"` or `"terminal"` | `"classic"` |
 | `stale_after` | seconds without new data before values dim | never |
 | `history` | seconds of values kept for plots | the longest `range`, and a minute |
@@ -184,7 +200,7 @@ every id they make. [Sources](sources.md) describes each kind in full.
 
 | `type` | Keys |
 | --- | --- |
-| `rest` | `url`, `prefix`, `select`, `key`, `include`, `exclude`, `interval`, `timeout`, `accept`, `headers`: see [REST APIs](sources.md#rest-apis) |
+| `rest` | `url`, `prefix`, `select`, `key`, `include`, `exclude`, `rate`, `events`, `cursor`, `line`, `id`, `interval`, `timeout`, `accept`, `headers`: see [REST APIs](sources.md#rest-apis) |
 | `ads` | `target` (the AMS net id) and `variables` (names, `*` for any characters, or a table of types), `types`, `ip`, `interval`, `timeout`; or `file`, an interface file beside the config, in place of those that describe the PLC. Ids are the PLC's variable names. Never writes to the PLC: `write = true` on a variable is refused here (an interface file's marks are left unused) |
 | `zmq` | `endpoint`, `pattern` (`"sub"` or `"pull"`), `bind`, and a `decoder` |
 | `serial` | `port` (default `"auto"`), `baudrate`, and a `decoder` |

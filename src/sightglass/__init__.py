@@ -30,6 +30,7 @@ from .decoders import (
 )
 from .elements import (
     Coordinate,
+    Counters,
     Element,
     IndicatorLamp,
     LogMonitor,
@@ -91,6 +92,7 @@ __all__ = [
     "BinaryFrameDecoder",
     "Client",
     "Coordinate",
+    "Counters",
     "CsvDecoder",
     "DecodeError",
     "Decoder",

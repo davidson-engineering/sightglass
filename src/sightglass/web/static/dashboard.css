@@ -162,3 +162,21 @@ h3 { margin: 0; font-size: clamp(20px, 3.2vmin, 68px); font-weight: 700; line-he
   width: clamp(0%, calc((var(--value, var(--min)) - var(--min)) / (var(--max) - var(--min)) * 100%), 100%);
   background: var(--accent);
 }
+
+/* A log: the newest line is at the bottom, and the oldest are cut off at the
+   top when the panel is too short for all of them. */
+.lines {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  font-size: clamp(12px, 1.7vmin, 34px);
+  line-height: 1.35;
+  color: #cbd5e1;
+}
+.lines > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lines > [data-level="debug"] { color: #64748b; }
+.lines > [data-level="warning"] { color: #fbbf24; }
+.lines > [data-level="error"] { color: #f87171; }

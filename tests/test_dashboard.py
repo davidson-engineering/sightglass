@@ -1,5 +1,7 @@
 """Dashboards described by a config file: sightglass --config."""
 
+import asyncio
+import json
 import re
 import time
 import urllib.request
@@ -12,7 +14,7 @@ from sightglass import Monitor, RestSource, WebDashboard
 from sightglass.cli import build, parser
 from sightglass.dashboard import load, render
 
-from .conftest import until
+from .conftest import run_cli, stop, until
 
 MINIMAL = """
 [[source]]
@@ -183,6 +185,13 @@ def test_the_page_says_which_instance_it_is(tmp_path):
     assert "v2.1" not in load(other).page()  # no version, none shown
 
 
+@pytest.mark.parametrize(("version", "shown"), [("1.2", "v1.2"), ("spike", "spike")])
+def test_the_header_puts_v_only_before_a_number(tmp_path, version, shown):
+    path = write(tmp_path, f'version = "{version}"\n' + MINIMAL)
+    identity = re.search(r'<small class="identity">(.*?)</small>', load(path).page())
+    assert identity.group(1).startswith(f"{shown} · dashboard.toml")
+
+
 def test_heatmap_panels_say_so(tmp_path):
     page = load(write(tmp_path, MINIMAL + 'mode = "heatmap"')).page()
     assert page.count('data-plot-mode="heatmap"') == 2
@@ -192,7 +201,7 @@ def test_heatmap_panels_say_so(tmp_path):
 def test_the_cli_builds_the_dashboard_from_the_file(tmp_path):
     path = write(tmp_path, 'title = "Plant"\n' + MINIMAL)
     monitor, sources, outputs = build(parser().parse_args(["--config", str(path)]))
-    (web_output,) = outputs
+    web_output = outputs[0]
     assert monitor.max_elements == 2000 and monitor.history is not None
     assert "<title>Plant</title>" in web_output.html and web_output.title == "Plant"
     assert len(sources) == 1 and isinstance(sources[0], RestSource)
@@ -337,7 +346,7 @@ ids = ["p.{name}.value.*"]
 def test_the_file_says_what_the_dashboard_is_the_cli_where_it_runs(tmp_path):
     path = write(tmp_path, 'theme = "terminal"\nstale_after = 3\n' + MINIMAL)
     argv = ["--config", str(path), "--port", "0", "--token", "t", "--debug"]
-    _, _, (web_output,) = build(parser().parse_args(argv))
+    _, _, (web_output, _audit) = build(parser().parse_args(argv))
     assert (web_output.theme, web_output.stale_after) == ("terminal", 3)
     assert (web_output.port, web_output.token, web_output.debug) == (0, "t", True)
 
@@ -353,3 +362,101 @@ def test_the_file_says_what_the_dashboard_is_the_cli_where_it_runs(tmp_path):
 def test_the_files_display_settings_are_checked(tmp_path, setting, error):
     with pytest.raises(ValueError, match=error):
         load(write(tmp_path, setting + "\n" + MINIMAL))
+
+
+async def test_a_panel_whose_id_matches_nothing_is_warned_about_once(tmp_path):
+    async def readings(request):
+        return web.json_response({"res": {"host": {"cpu_percent": 3.5, "mem": 40}}})
+
+    app = web.Application()
+    app.router.add_get("/api", readings)
+    server = TestServer(app)
+    await server.start_server()
+    text = f"""
+[[source]]
+url = "{server.make_url("/api")}"
+interval = 0.05
+[[section]]
+title = "Host"
+[[section.panel]]
+type = "value"
+title = "CPU"
+id = "res.cpu_percent"
+[[section.panel]]
+type = "value"
+title = "Memory"
+id = "res.host.mem"
+[[section.panel]]
+title = "History"
+ids = ["res.host.*"]
+"""
+    process, _ = run_cli("--config", str(write(tmp_path, text)))
+    try:
+        await asyncio.sleep(1.5)  # several polls: the warning must come once
+    finally:
+        _, err = stop(process)
+        await server.close()
+    assert err.count("no id") == 1
+    assert (
+        """panel "CPU" (section "Host"): no id 'res.cpu_percent'; """
+        "did you mean 'res.host.cpu_percent'?" in err
+    )
+
+
+async def test_a_trend_of_a_rated_id_draws_its_rate(tmp_path):
+    state = {"requests": 0}
+
+    async def counter(request):
+        state["requests"] += 100
+        return web.json_response({"requests_total": state["requests"]})
+
+    app = web.Application()
+    app.router.add_get("/api", counter)
+    server = TestServer(app)
+    await server.start_server()
+    text = f"""
+[[source]]
+url = "{server.make_url("/api")}"
+rate = ["requests_total"]
+interval = 0.05
+[[panel]]
+ids = ["requests_total"]
+"""
+    monitor, sources, outputs = build(
+        parser().parse_args(["--config", str(write(tmp_path, text)), "--port", "0"])
+    )
+    outputs[0].announce = False
+    monitor.start(sources=sources, outputs=outputs)
+    try:
+        base = outputs[0].url
+
+        def get(route):
+            with urllib.request.urlopen(base + route, timeout=5) as response:
+                return response.read().decode()
+
+        assert 'data-plot="requests_total"' in get("")
+        await until(lambda: "requests_total" in monitor)
+        rate = monitor["requests_total"].value
+        assert 100 < rate < 5000  # 100 per ~0.05 s, not the count
+        history = json.loads(get("history?id=requests_total&seconds=5&points=50"))
+        points = history["signals"]["requests_total"]
+        assert any(p is not None for p in points)
+    finally:
+        monitor.stop()
+        await server.close()
+
+
+def test_a_panel_error_names_its_section_and_title(tmp_path):
+    text = MINIMAL.split("[[panel]]")[0] + "".join(
+        f'[[section]]\ntitle = "{name}"\n'
+        + "".join(
+            f'[[section.panel]]\ntitle = "{name} {n}"\nids = ["a.*"]\n'
+            + ("precison = 2\n" if (name, n) == ("Service", 3) else "")
+            for n in (1, 2, 3)
+        )
+        for name in ("Health", "Service")
+    )
+    with pytest.raises(ValueError) as error:
+        load(write(tmp_path, text))
+    expected = 'section "Service", panel 3 "Service 3" has unknown \'precison\''
+    assert expected in str(error.value)

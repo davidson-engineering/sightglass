@@ -77,6 +77,9 @@ class Signals:
     def __contains__(self, id: object) -> bool:
         return id in self._signals
 
+    def ids(self) -> list[str]:
+        return list(self._signals)
+
     def __getitem__(self, id: str) -> Signal:
         return self._signals[id]
 

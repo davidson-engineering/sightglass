@@ -32,3 +32,28 @@ Measured on an Apple M5 Pro (macOS 27, Python 3.14), with one page open:
 Memory is mostly history: 8 bytes per 50 ms slot per signal, kept for 10
 minutes. The fake PLC's own CPU isn't counted; a real PLC does that work.
 
+
+## Trends on the generic page
+
+With `--history`, the generic page draws a small trend beside each value that
+history records (a number), the way a `Sparkline` is drawn. One request a
+second feeds them all: `GET /history?id=*&seconds=60&step=1` when the page
+opens, then only the points since the last one. Ids that are not numbers come
+back with no history and get no trend. Without `--history` the page is
+unchanged.
+
+Measured in headless Chromium on Linux, values changing twice a second, the
+page's own work (including showing the values) from Chrome's task timer:
+
+| Numeric ids | Request, each second | Page, one core |
+| --- | --- | --- |
+| 100 | 4.6 KB | 3% |
+| 1000 | 58 KB | 11% |
+| 5000 | 240–300 KB | 51% |
+
+Past **1000 values** on the page, it draws no trends and says so at the top
+of the page: that is the count the page keeps up with comfortably. (The count
+is of all values, numbers or not.) Pages with a `trend` panel or a
+`data-plot` are not affected.
+
+Screenshots in both themes at desktop and 390 px are in `docs/trends/`.
