@@ -149,7 +149,7 @@ page, so keep those dashboards to sources with a few hundred ids.
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `title` | the page heading | `"Dashboard"` |
-| `version` | a label for this dashboard's own version, shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time | none |
+| `version` | a label for this dashboard's own version (a `v` goes before one that starts with a digit: `1.2` shows `v1.2`, `spike` stays `spike`), shown at the right of the title bar with the config's name and fingerprint, the sightglass version and the start time | none |
 | `theme` | the look unless a viewer switches: `"classic"` or `"terminal"` | `"classic"` |
 | `stale_after` | seconds without new data before values dim | never |
 | `history` | seconds of values kept for plots | the longest `range`, and a minute |
