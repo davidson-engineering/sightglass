@@ -162,15 +162,16 @@ def _fit_group(group: Group, width: int, room: int) -> tuple[str, int] | None:
     """The group's first elements that fit in ``room`` lines, and how many."""
     inner = width - 4 if group.border else width
     room -= 2 if group.border else 0
-    lines: list[str] = []
-    count = 0
+    parts: list[str] = []
+    used = 0  # lines, not elements: a table or log takes several
     for element in group.elements:
         text = _render_element(element, inner)
-        if len(lines) + text.count("\n") + 1 > room:
+        height = text.count("\n") + 1
+        if used + height > room:
             break
-        lines.append(text)
-        count += 1
-    if not count:
+        parts.append(text)
+        used += height
+    if not parts:
         return None
-    body = "\n".join(lines)
-    return (boxed(body, width, group.name) if group.border else body), count
+    body = "\n".join(parts)
+    return (boxed(body, width, group.name) if group.border else body), len(parts)

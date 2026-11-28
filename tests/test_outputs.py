@@ -474,6 +474,19 @@ def test_terminal_generic_layout_never_scrolls(monkeypatch):
     assert shown + int(frame[-1].split()[1]) >= 30
 
 
+def test_terminal_group_of_multiline_elements_is_cut_to_the_screen(monkeypatch):
+    """A group cut partway counts its elements' lines, not the elements."""
+    monkeypatch.setattr("shutil.get_terminal_size", lambda: os.terminal_size((80, 24)))
+    monitor = Monitor()
+    monitor.add_group("logs", [LogMonitor(f"log{n}", lines=5) for n in range(6)])
+    for n in range(6):
+        for line in range(5):
+            monitor.set(f"logs.log{n}", f"entry {line}")
+    frame = TerminalDisplay().render(monitor).split("\n")
+    assert len(frame) <= 24
+    assert re.fullmatch(r"\+ \d+ more ids?", frame[-1])
+
+
 def test_terminal_log_is_not_padded(monkeypatch):
     monkeypatch.setattr("shutil.get_terminal_size", lambda: os.terminal_size((80, 24)))
     monitor = Monitor()
