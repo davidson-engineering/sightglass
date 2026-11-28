@@ -33,6 +33,31 @@ Memory is mostly history: 8 bytes per 50 ms slot per signal, kept for 10
 minutes. The fake PLC's own CPU isn't counted; a real PLC does that work.
 
 
+## What each open page is sent
+
+A page's live connection sends an id each time the source sets it, because a
+value that arrives again counts as arriving (it resets `data-stale-after`).
+Only ids whose value changed carry the value: one that arrived again with the
+value that page already has is listed by id in `"fresh"` of the update, and
+the page treats it as arrived without redrawing it.
+
+Measured on a fake endpoint of 915 ids (183 workers of five fields each: an
+`id` string, and four numbers like `123.456`; ids like
+`api.resources.workers.12.cpu`) polled every 0.2 s, with 45 numbers (5%)
+changing each poll, one page, bytes of WebSocket text per second:
+
+| | Every id sent in full | Unchanged ids in `fresh` |
+| --- | --- | --- |
+| 915 ids at 5 polls a second | 229 KB/s | 156 KB/s |
+
+A fresh id still costs its name (about 30 bytes here), so the saving grows
+with the length of the values and the share that is steady, not with the
+number of ids alone; a page's cost is still ids x polls a second x pages.
+For the generic page, a few hundred ids polled every second or two is
+comfortable; at 900 ids polled five times a second expect about 150 KB/s to
+each page.
+
+
 ## Trends on the generic page
 
 With `--history`, the generic page draws a small trend beside each value that

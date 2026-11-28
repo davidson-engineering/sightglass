@@ -175,11 +175,30 @@ async def test_web_sends_snapshot_then_only_changes(client):
     assert update == {
         "type": "update",
         "values": {"speed": "3", "machine": {"estop": False, "enabled": True}},
+        "fresh": [],
         "merged": 0,
     }
     client.monitor.update({"X.velocity": 12})
     update = await ws.receive_json(timeout=1)
     assert update["values"] == {"X.velocity": {"text": "12.00 mm/s", "ratio": 0.12}}
+    await ws.close()
+
+
+async def test_web_sends_an_unchanged_value_as_fresh_not_again(client):
+    ws = await client.ws_connect("/ws")
+    await ws.receive_json(timeout=1)
+    client.monitor.update({"speed": 3, "machine": 2})
+    update = await ws.receive_json(timeout=1)
+    assert update["values"]["speed"] == "3" and update["fresh"] == []
+    client.monitor.update({"speed": 3})  # arrives again, the same
+    update = await ws.receive_json(timeout=1)
+    assert update["values"] == {} and update["fresh"] == ["speed"]
+    client.monitor.update({"speed": 4, "machine": 2})  # one changed, one not
+    update = await ws.receive_json(timeout=1)
+    assert update["values"] == {"speed": "4"} and update["fresh"] == ["machine"]
+    client.monitor.update({"speed": 3})  # back to an earlier value: changed
+    update = await ws.receive_json(timeout=1)
+    assert update["values"] == {"speed": "3"} and update["fresh"] == []
     await ws.close()
 
 

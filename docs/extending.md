@@ -4,6 +4,9 @@ Each part of sightglass is a small interface you can implement yourself:
 
 - **Element:** subclass `Element` and implement `update(value)`,
   `to_json()` (what the browser receives) and `render(width)` (terminal text).
+  `to_json()` returns a new value each call, never a list or dict the
+  element goes on changing: each page is sent only values that differ from
+  the last it was sent, so one changed in place looks unchanged.
   Override `update_field` to accept `"<id>.<field>"` updates.
 - **Wire format:** subclass `LineDecoder` and implement
   `decode_line(line) -> {id: value}`, raising `DecodeError` for bad input; or
