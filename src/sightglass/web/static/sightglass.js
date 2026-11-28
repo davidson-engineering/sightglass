@@ -36,6 +36,12 @@
 // against time from the dashboard's history (it needs --history). The code
 // (plot.js) loads only on pages that have one; see it for the details.
 //
+// Trends: <div data-trend="rate" hidden></div> draws a small line of the id's
+// last minute (a sparkline's, from the dashboard's history, so it needs
+// --history) and unhides itself once the id has numbers. One request a second
+// feeds every such element on the page. The generic page uses this for the
+// values nothing else draws.
+//
 // The signals view, for checking what a feed sends: every value the dashboard
 // has accepted, by id, as sent, with a chart of its last minute. The ` key
 // opens and closes it on any page; so does clicking an element marked
@@ -236,6 +242,7 @@
         document.dispatchEvent(new CustomEvent("monitor:snapshot", { detail: message }));
         collectBindings();
         startPlots();
+        startTrends();
       }
       apply(message.values, message.ages);
       document.dispatchEvent(
@@ -277,6 +284,85 @@
     }
     showSwitches();
   });
+
+  // Trends: one GET /history a second for every [data-trend] element, the
+  // whole last minute at first and then the points since the last one.
+  const TREND_SECONDS = 60;
+  const trends = { els: new Map(), series: new Map(), start: 0, step: 0, running: false };
+
+  function startTrends() {
+    trends.els = new Map();
+    for (const el of document.querySelectorAll("[data-trend]")) {
+      const id = el.dataset.trend;
+      if (!trends.els.has(id)) trends.els.set(id, []);
+      trends.els.get(id).push(el);
+    }
+    trends.step = 0; // new elements: load the minute again
+    if (trends.els.size && !trends.running) {
+      trends.running = true;
+      pollTrends();
+    }
+  }
+
+  async function pollTrends() {
+    const began = performance.now();
+    if (!trends.els.size) {
+      trends.running = false;
+      return;
+    }
+    if (!document.hidden && root.dataset.connection !== "closed") {
+      try {
+        await fetchTrends();
+      } catch {} // the dashboard has gone: keep what we have
+    }
+    setTimeout(pollTrends, Math.max(1000 - (performance.now() - began), 100));
+  }
+
+  async function fetchTrends() {
+    const reload = !trends.step;
+    const params = new URLSearchParams({ id: "*" }); // every number: the rest are not drawn
+    if (reload) {
+      params.set("seconds", TREND_SECONDS);
+      params.set("step", 1);
+    } else {
+      const length = Math.max(...[...trends.series.values()].map((s) => s.length));
+      params.set("from", trends.start + (length - 1) * trends.step);
+      params.set("step", trends.step);
+    }
+    const response = await fetch(`/history?${params}`);
+    if (!response.ok) {
+      await response.text(); // not drawn: no history, or too many ids
+      trends.step = 0;
+      return;
+    }
+    const result = await response.json();
+    if (reload) {
+      Object.assign(trends, { start: result.start, step: result.step });
+      trends.series = new Map();
+    }
+    const offset = Math.round((result.start - trends.start) / trends.step);
+    for (const [id, points] of Object.entries(result.signals)) {
+      if (points === null || !trends.els.has(id)) continue;
+      let series = trends.series.get(id);
+      if (!series) trends.series.set(id, (series = []));
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        series[offset + i] = Array.isArray(p) ? (p[0] + p[1]) / 2 : p;
+      }
+    }
+    const end = result.start + result.points * result.step;
+    const gone = Math.floor((end - TREND_SECONDS - trends.start) / trends.step) - 1;
+    if (gone > 0) {
+      for (const series of trends.series.values()) series.splice(0, gone);
+      trends.start += gone * trends.step;
+    }
+    for (const [id, series] of trends.series) {
+      for (const el of trends.els.get(id) ?? []) {
+        el.hidden = false;
+        drawSparkline(el, series);
+      }
+    }
+  }
 
   let plotModule = null;
   function startPlots() {
