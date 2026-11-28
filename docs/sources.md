@@ -93,10 +93,31 @@ Corrupt frames are skipped and decoding resumes at the next `0xAA`.
 
 `RestSource` needs the `rest` extra (`aiohttp`). It polls each URL with GET:
 
-- **Ids:** nested objects become dotted ids, and lists of objects are keyed by
-  their `id` field (which is not an id itself: `sensors.s0.rate`, no
-  `sensors.s0.id`). `Endpoint(url, prefix=, select=, key=, include=,
-  exclude=, rate=, interval=, accept=)` tunes one URL; `headers={...}` sends an API key or bearer token.
+- **Ids:** nested objects become dotted ids. A list of numbers or text is
+  numbered from 0 (`{"load": [0.4, 0.7]}` gives `load.0`, `load.1`). A list of
+  objects is named by each object's `key` field (`"id"` unless `key=` says
+  otherwise) when it has a text or integer one that is not empty, and by its
+  position when it hasn't: `{"workers": [{"id": "worker-1", "rss_mb": 80}]}`
+  gives `workers.worker-1.rss_mb`. The key field only names the item, and
+  makes no id of its own (no `workers.worker-1.id`); an object without a usable
+  key field keeps every field, `id` included (`workers.0.id`).
+  `Endpoint(url, prefix=, select=, key=, include=, exclude=, rate=, interval=,
+  accept=)` tunes one URL; `headers={...}` sends an API key or bearer token.
+  `select` is a dotted path into the reply, and a number in it picks from a
+  list (`select = "pools.0.stats"`).
+- **Lists that change:** every id is an element on the page, and it stays
+  there. A list whose items come and go (events, jobs, alerts, one entry per
+  connection) makes new ids each poll, which fill `max_elements` and leave the
+  old ones showing their last value. Read it as an event feed (below) when its
+  items are things that happened; when they are things that exist now, `select`
+  the object of counts that summarises them (`"jobs.by_state"`, not the list
+  of jobs), or `include` only the ids you want.
+- **A health check** often answers 503 (or 500) when something is down, with
+  a body that says what. A reply outside 2xx is logged and ignored, its body
+  too, unless its status is in `accept`: `accept = [503]` (`Endpoint(url,
+  accept=(503,))`) reads the body of a 503 like any other, so
+  `{"ok": false, "checks": {"queue": false}}` shows the failing check instead
+  of a gap. Other failing statuses are still failed polls.
 - **Choosing ids:** `include` and `exclude` are lists of id patterns (`*` for
   any characters, matched against the whole id, prefix included); an id is kept
   if it matches an `include` (or there is none) and no `exclude`. Dropped
@@ -134,6 +155,7 @@ Corrupt frames are skipped and decoding resumes at the next `0xAA`.
 - **Invalid data is blanked:** `null`, or an endpoint that can't be reached,
   blanks that id (a gap in a plot) rather than leaving its last value showing.
 - **A down endpoint** is logged once and retried.
+- **Putting it together:** [Monitoring a web service](https://github.com/davidson-engineering/sightglass/blob/main/src/sightglass/GUIDE.md#monitoring-a-web-service) shows metrics, a health check and an event feed on one dashboard, and [examples/web_service/](https://github.com/davidson-engineering/sightglass/blob/main/examples/web_service/dashboard.toml) runs it against a fake service.
 - **Big replies:** one over 16 MB is refused (64 MB for InfluxDB), and one
   over 256 KB is parsed in a worker thread, so it doesn't hold up the page.
 

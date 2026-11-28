@@ -215,3 +215,67 @@ def test_the_monitor_your_own_app_recipe_runs(name, heading):
         assert "INFO all jobs run" in shown["log"]
     else:
         assert shown["jobs.left"] == "7"
+
+
+# Runs a recipe that polls a web service as written, except that the service is
+# the example's fake one, the dashboard takes any free port, and a second goes by
+# before the values are read.
+SERVICE_SNIPPET = """
+import json, sys, time
+
+import sightglass
+from sightglass import WebDashboard
+
+sys.path.insert(0, sys.argv[1])
+from fake_service import start_in_thread
+
+real_start = sightglass.start
+sightglass.start = lambda **options: real_start(
+    outputs=[WebDashboard(port=0, announce=False)], **options
+)
+code = sys.stdin.read().replace("http://localhost:8000", start_in_thread())
+namespace = {}
+exec(code, namespace)
+time.sleep(3.5)
+print(json.dumps(namespace["monitor"].snapshot()))
+namespace["monitor"].stop()
+"""
+
+
+def run_service_recipe(code: str) -> dict:
+    result = subprocess.run(
+        [sys.executable, "-c", SERVICE_SNIPPET, str(ROOT / "examples" / "web_service")],
+        input=code,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_the_web_service_recipe_runs():
+    shown = run_service_recipe(
+        snippet_under(DOCS["GUIDE.md"], "### Monitoring a web service")
+    )
+    assert shown["health.ok"] is True
+    assert "svc.service.requests_total" in shown  # a rate, once two polls are in
+    assert "svc.load.0" in shown and "svc.workers.worker-1.rss_mb" in shown
+    assert "svc.workers.worker-1.id" not in shown  # the key names the item
+    assert "health.checks.queue" in shown
+    assert shown["events"], "the feed's lines"
+    assert not any(name.startswith("events.") for name in shown)  # no id per event
+
+
+def test_the_source_example_in_extending_runs():
+    shown = run_service_recipe(
+        snippet_under(DOCS["docs/extending.md"], "## A source in 20 lines")
+    )
+    assert shown["health.up"] is True
+
+
+def test_the_source_example_survives_a_service_that_is_down():
+    code = snippet_under(DOCS["docs/extending.md"], "## A source in 20 lines")
+    shown = run_service_recipe(code.replace("localhost:8000", "127.0.0.1:1"))
+    assert shown["health.up"] is False
+    assert "127.0.0.1:1" in shown["events"]

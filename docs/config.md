@@ -28,6 +28,10 @@ Not sure what ids a source makes? `sightglass --rest URL --list` polls once,
 prints each id with its value and exits (`--config dashboard.toml --list` does
 the same for a file's sources), so the panels' `ids` can be copied from it.
 
+A web service's metrics, health check and event feed make three `rest`
+sources and a few panels: [Monitoring a web service](https://github.com/davidson-engineering/sightglass/blob/main/src/sightglass/GUIDE.md#monitoring-a-web-service)
+walks through one, and `examples/web_service/dashboard.toml` is it.
+
 A mistake in the file, such as an unknown key, is reported in one clear line.
 [examples/](https://github.com/davidson-engineering/sightglass/blob/main/examples/README.md#10-a-dashboard-from-a-config-file-a-rest-api)
 has three config dashboards to copy: a REST API, a PLC and an InfluxDB
@@ -195,6 +199,15 @@ monitor.set("app.cpu", 12.5)
 `debug` and `open_browser`. It reads the file's sources too, if it has any.
 In an asyncio program, `dashboard.monitor()` and `dashboard.web(port=8080)` are
 the two parts: `await monitor.run(sources=dashboard.sources, outputs=[web])`.
+
+## What still needs Python
+
+The file takes the five panel types and the sources below, and nothing it
+doesn't name: for a source of your own (a login first, a POST, XML), a value
+worked out from others, a table, progress bar or counter display, writes to a
+PLC, or a page of your own layout, serve the file from Python and add the
+rest (`load("dashboard.toml").start()`, then `monitor.set(...)`, as in
+[Feed it from your own program](#feed-it-from-your-own-program)).
 
 ## Sources and their keys
 

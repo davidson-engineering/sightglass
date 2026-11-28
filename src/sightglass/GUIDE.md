@@ -31,6 +31,7 @@ aiohttp for the browser dashboard, `[serial]` pyserial, `[zmq]` pyzmq,
 | A REST API that answers GET with JSON | `sightglass --rest http://host:8000/metrics` (repeat `--rest`; `--rest-interval`, `--rest-header 'X-Api-Key: ...'`), or `RestSource("http://host/metrics", interval=2)`; needs `[rest]` |
 | A dashboard that is a file, one per instance, kept apart from the code | `sightglass --config dashboard.toml`: `[[source]]` (rest, ads, zmq, serial or influxdb; or none, fed by `POST /update`) and `[[panel]]` tables (trend, value, lamp, gauge; `[[section]]` to group them), no page to write; from Python, `load("dashboard.toml").start(port=8080)` (`from sightglass.dashboard import load`) serves it and returns the monitor; every key: https://github.com/davidson-engineering/sightglass/blob/main/docs/config.md |
 | An asyncio program | `await monitor.run(outputs=[WebDashboard()])` in a task |
+| A web service: metrics, health check, event feed | `RestSource` with `Endpoint`s (`rate`, `accept`, `events`), or a `--config` file: [Monitoring a web service](#monitoring-a-web-service) |
 | Just show the user what it looks like | `sightglass --demo --open` (every display), `sightglass --demo launch --open` (a hand-built page), `sightglass --demo plot --open` (value-vs-time plots), `sightglass --demo load --open` (a fake PLC's 1000 signals over ADS, and what they cost; needs the ads extra) |
 
 Choose `start()` when the dashboard should live and die with the program.
@@ -97,6 +98,65 @@ log.warning("job 42 failed")  # warnings amber, errors red
 | generic | nothing | declared `Sparkline`s | `start()` |
 | config file | TOML panels | `trend` panels | `sightglass.dashboard.load("dashboard.toml").start()` |
 | your own | HTML, CSS | `data-plot` | `start(outputs=[WebDashboard("page.html")])` |
+
+### Monitoring a web service
+
+Metrics, a health check and an event feed are three different things, and each
+is read its own way. This is one dashboard of all three; `examples/web_service/`
+runs it against a fake service.
+
+```python
+from sightglass import Endpoint, RestSource, start
+
+service = "http://localhost:8000"
+monitor = start(
+    sources=[
+        RestSource(
+            Endpoint(  # metrics: numbers, and counters that only grow
+                f"{service}/metrics",
+                prefix="svc",
+                rate=["svc.service.requests_total"],
+            ),
+            Endpoint(  # a health check: a 503 with a body is still data
+                f"{service}/health", prefix="health", accept=(503,)
+            ),
+            Endpoint(  # events: one line of a log each, no id per event
+                f"{service}/events",
+                events="events",
+                cursor="id",
+                line="{time} {level}: {message}",
+                id="events",
+            ),
+            interval=1,
+        )
+    ]
+)
+```
+
+- **Metrics:** a counter (`requests_total`) is useless as a growing number;
+  list it in `rate` and it shows the change per second. A list of numbers
+  gives `load.0`, `load.1`; a list of objects with an `id` field gives
+  `workers.worker-1.rss_mb` (the `id` field names the item and is not an id
+  itself). For a percentage of use (CPU, a pool), `RangeBar(id, min=0,
+  max=100, units="%")` draws a marker on a track and still shows a reading
+  past the ends; `ProgressBar` fills like a level but is named for progress
+  towards `total`, and a config file's `gauge` panel is the same bar.
+- **Health:** a service that is down often answers 503 with a body saying
+  which check failed. Without `accept=(503,)` that reply is ignored, and the
+  page shows a gap, not the reason.
+- **Lists that change** (events, jobs, alerts) make new ids each poll, which
+  stay on the page and count against `max_elements`. For things that happened,
+  use the events mode (`events`, `cursor`, `line`, `id`: each new event is
+  one line of a `LogMonitor`); for things that exist now, `select` the object
+  of counts that sums them up (`select="jobs.by_state"`) rather than the list.
+- **Finding the ids first:** `sightglass --rest URL --list` polls once and
+  prints every id with its value, before you write panels or elements.
+- **As a file:** the same three sources and their panels (`lamp`, `gauge`,
+  `trend`, `log`) are a `--config` file with no code:
+  `examples/web_service/dashboard.toml`. Python is needed only for what the
+  file can't say: a source of your own, computed values, a custom page.
+- Rates, event feeds, `accept` and ids for lists, in full:
+  https://github.com/davidson-engineering/sightglass/blob/main/docs/sources.md#rest-apis
 
 ### Choosing how values look
 
@@ -273,8 +333,8 @@ aliases, `pack_mode` attributes). In Python: `AdsSource("5.12.34.56.1.1",
 | a value or message | `TextElement(id, units="°C", format=TextFormat(precision=1))` | anything |
 | a small line of recent values | `Sparkline(id, points=60, scale=1 / 1024, units="KB/s")` | numbers |
 | a longer line of a fast value | `Sparkline(id, points=300, interval=1)`: one point a second | numbers |
-| progress | `ProgressBar(id, total=100)` | a number |
-| a reading within limits | `RangeBar(id, min=0, max=100, units="mm")` | a number |
+| progress towards a total | `ProgressBar(id, total=100)` | a number |
+| a reading within limits, a utilisation percentage | `RangeBar(id, min=0, max=100, units="%")`: a marker on a track | a number |
 | on/off | `IndicatorLamp(id)` | bool, 1/0, on/off |
 | many flags in one integer | `MachineState(id, states=[...])` (bit 0 first) | an integer |
 | a position | `Coordinate(id, axes=("x", "y", "z"))` | a list, or `id.x` |

@@ -124,3 +124,34 @@ async def test_the_ads_example_shows_what_its_fake_plc_makes():
     finally:
         monitor.stop()
         server.stop()
+
+
+async def test_the_web_service_example_shows_what_its_fake_service_makes(monkeypatch):
+    folder = EXAMPLES / "web_service"
+    monkeypatch.syspath_prepend(str(folder))
+    fake = module(folder / "fake_service.py")
+    monkeypatch.setenv("SERVICE_URL", fake.start_in_thread())
+    monitor = started(folder / "dashboard.toml")
+    try:
+        await until(
+            lambda: "health.ok" in monitor and "svc.load.0" in monitor, within=10
+        )
+        dashboard = load(folder / "dashboard.toml")
+        assert_shows_only_what_exists(dashboard, monitor)
+        assert "svc.workers.worker-1.busy_pct" in monitor
+        assert "svc.workers.worker-1.id" not in monitor
+        await until(
+            lambda: monitor["events"].entries, within=10
+        )  # one log, no ids per event
+    finally:
+        monitor.stop()
+
+
+def test_the_fake_service_health_check_answers_503_when_down():
+    fake = module(EXAMPLES / "web_service" / "fake_service.py")
+    status, body = fake.health(fake.START + 55)
+    assert status == 503 and body["ok"] is False
+    assert fake.health(fake.START + 5) == (
+        200,
+        {"ok": True, "checks": {"database": True, "queue": True}},
+    )
