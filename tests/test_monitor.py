@@ -123,6 +123,42 @@ def test_element_limit_stops_runaway_creation(caplog):
     assert "max_elements" in caplog.text
 
 
+def test_dropped_ids_log_one_warning(caplog):
+    monitor = Monitor(max_elements=100)
+    with caplog.at_level(logging.WARNING, logger="sightglass"):
+        monitor.update({f"id.{i}": i for i in range(5000)})
+    warnings = [r.getMessage() for r in caplog.records]
+    assert len(warnings) == 1
+    assert "max_elements" in warnings[0] and "100 elements" in warnings[0]
+    assert "'id.100'" in warnings[0]
+    assert len(monitor) == 100
+    assert monitor.rejected == 4900
+
+
+def test_dropped_ids_are_summarised_once_a_minute(caplog, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr("sightglass.monitor.monotonic", lambda: now[0])
+    monitor = Monitor(max_elements=1)
+    with caplog.at_level(logging.WARNING, logger="sightglass"):
+        monitor.update({"a": 1, "b": 2, "c": 3, "d": 4})
+        now[0] += 59
+        monitor.update({"e": 5})
+        assert len(caplog.records) == 1
+        now[0] += 1
+        monitor.update({"f": 6})
+    assert len(caplog.records) == 2
+    assert "dropped 4 new ids in the last minute, e.g. 'f'" in caplog.text
+
+
+def test_bad_value_still_warns_after_the_limit_floods(caplog):
+    monitor = Monitor(max_elements=2)
+    monitor.add(RangeBar("x", min=0, max=1))
+    with caplog.at_level(logging.WARNING, logger="sightglass"):
+        monitor.update({f"id.{i}": i for i in range(50)})
+        monitor.set("x", "fast")
+    assert "bad value 'fast'" in caplog.records[-1].getMessage()
+
+
 def test_warnings_are_visible_without_logging_setup():
     """The library must not hide its warnings behind a NullHandler."""
     script = (
