@@ -82,6 +82,11 @@
     .spark > span { text-align: right; white-space: nowrap; }
     .chart { height: 24px; color: var(--bar); }
     .chart svg { display: block; }
+    /* A value with a trend (history is on) reads like a sparkline's: line, then number. */
+    .trend:has(> .chart:not([hidden])) { display: grid; grid-template-columns: 1fr 11ch; gap: 12px; align-items: center; }
+    .trend > .value-text { text-align: right; white-space: nowrap; }
+
+    .note { margin: 0; color: var(--muted); font-size: 13px; }
 
     .empty { padding: 24px 16px; color: var(--muted); }
     .empty p { margin: 0 0 12px; }
@@ -232,7 +237,7 @@
     const bound = (tag, key, { dataset = {}, ...props } = {}) =>
       el(tag, { ...props, dataset: { bind: key, ...dataset } });
 
-    function valueFor(item) {
+    function valueFor(item, history) {
       switch (item.kind) {
         case "IndicatorLamp":
           return el("div", { className: "lamps" }, bound("div", item.id, { className: "led", dataset: { mode: "state" } }));
@@ -258,6 +263,12 @@
           return el("div", { className: "spark" },
             bound("div", `${item.id}.values`, { className: "chart", dataset: { mode: "sparkline" } }),
             bound("span", `${item.id}.text`));
+        case "TextElement":
+          if (history) {
+            return el("div", { className: "trend" },
+              el("div", { className: "chart", hidden: true, dataset: { trend: item.id } }),
+              bound("span", item.id, { className: "value-text" }));
+          }
         default:
           return el("span", {}, bound("span", item.id));
       }
@@ -283,7 +294,9 @@
       }
     });
 
-    const row = (item) => el("div", { className: item.kind === "LogMonitor" ? "row wide" : "row" }, el("div", { className: "label" }, item.label), el("div", { className: "value" }, valueFor(item)));
+    // Past this many values the page stops drawing trends (see docs/performance.md).
+    const TREND_LIMIT = 1000;
+    const row = (item, history) => el("div", { className: item.kind === "LogMonitor" ? "row wide" : "row" }, el("div", { className: "label" }, item.label), el("div", { className: "value" }, valueFor(item, history)));
 
     function showEmptyState() {
       const hint = document.getElementById("empty").content.cloneNode(true);
@@ -297,15 +310,22 @@
       document.getElementById("title").textContent = detail.title;
       document.title = detail.title;
       if (detail.layout.length === 0) return showEmptyState();
+      const texts = detail.layout.reduce((n, item) =>
+        n + (item.group ? item.elements : [item]).filter((e) => e.kind === "TextElement").length, 0);
+      const history = detail.history && texts <= TREND_LIMIT;
       const sections = [];
+      if (detail.history && !history) {
+        sections.push(el("p", { className: "note" },
+          `${texts} values: trends are drawn for ${TREND_LIMIT} or fewer.`));
+      }
       let loose = null;
       for (const item of detail.layout) {
         if (item.group) {
           loose = null;
-          sections.push(el("section", {}, el("h2", {}, item.group), ...item.elements.map(row)));
+          sections.push(el("section", {}, el("h2", {}, item.group), ...item.elements.map((e) => row(e, history))));
         } else {
           if (!loose) sections.push((loose = el("section")));
-          loose.append(row(item));
+          loose.append(row(item, history));
         }
       }
       document.getElementById("dashboard").replaceChildren(...sections);
