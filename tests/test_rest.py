@@ -396,3 +396,36 @@ def test_flatten_copes_with_numbered_keys_and_long_lists():
     assert (
         out["1"] == "a" and out["k.0"] == 10 and out["k.299"] == 10 and len(out) == 301
     )
+
+
+def test_a_counter_becomes_a_rate_across_polls_and_a_reset():
+    from sightglass.sources._poll import Rates
+
+    rates = Rates(("hits", "events.*"))
+    polls = [(0, 100), (2, 150), (4, 250), (6, 10), (7, 30)]
+    shown = [rates.apply({"hits": c, "other": c}, t) for t, c in polls]
+    assert [s["hits"] for s in shown] == [None, 25.0, 50.0, None, 20.0]
+    assert [s["other"] for s in shown] == [c for _, c in polls]  # not a counter
+    assert rates.apply({"events.x": "n/a"}, 8) == {"events.x": None}
+    assert rates.apply({"events.x": True}, 9) == {"events.x": None}
+
+
+async def test_a_rest_endpoint_shows_its_rated_ids_as_rates(api, consume):
+    monitor = Monitor()
+    api.state["live"] = {"hits": 0, "level": 3}
+    endpoint = Endpoint(url(api, "/live"), rate=("hits",))
+    consume(monitor, RestSource(endpoint, interval=0.05))
+    await until(lambda: "level" in monitor)
+    assert "hits" not in monitor  # the first poll has no rate: no display
+    api.state["live"] = {"hits": 10, "level": 3}
+    await until(lambda: "hits" in monitor and monitor["hits"].value not in ("", None))
+    assert monitor["hits"].value > 0 and monitor["level"].value == 3
+
+
+def test_config_rate(tmp_path):
+    from sightglass.dashboard.sources import build
+
+    source = build({"url": "http://x", "rate": ["a_total", "e.*"]}, 0, tmp_path)
+    assert source.endpoints[0].rate == ("a_total", "e.*")
+    with pytest.raises(ValueError, match="rate in"):
+        build({"url": "http://x", "rate": "a"}, 0, tmp_path)
