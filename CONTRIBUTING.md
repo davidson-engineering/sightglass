@@ -24,11 +24,17 @@ screenshots after a change to the launch demo (`src/sightglass/launch/`).
 Releases are published to PyPI by `.github/workflows/release.yml` when a
 GitHub release is published.
 
-1. Set `__version__` in `src/sightglass/__init__.py` on a branch named
-   `release/v<version>`, and merge its pull request to `main` once CI has
+A change users would notice adds a line under `## [Unreleased]` in
+`CHANGELOG.md`, in the pull request that makes it.
+
+1. On a branch named `release/v<version>`, set `__version__` in
+   `src/sightglass/__init__.py`, and turn `## [Unreleased]` in
+   `CHANGELOG.md` into `## [<version>] - YYYY-MM-DD` with an empty
+   `## [Unreleased]` above it. Merge its pull request to `main` once CI has
    passed on Linux, macOS and Windows.
-2. Create a GitHub release with the tag `v<version>` (e.g. `v0.2.0`). The
-   workflow checks the tag matches `__version__`, builds, and uploads.
+2. Create a GitHub release with the tag `v<version>` (e.g. `v0.2.0`), with
+   that version's changelog section as its notes. The workflow checks the
+   tag matches `__version__`, builds, and uploads.
 
 ### One-time PyPI setup
 
