@@ -101,11 +101,11 @@ uv run --all-extras python docs/screenshot.py   # retake the README screenshots 
 - Serial tests need pseudo-terminals and skip on Windows. Forgejo CI
   (`.forgejo/workflows/check.yml`) runs `make check` on Python 3.11 on Linux
   for every pull request and push to `main`. The GitHub mirror keeps
-  `.github/workflows/`: Python 3.11 to 3.14, and macOS and Windows on a
+  `.github/workflows/`: Python 3.11 to 3.15, and macOS and Windows on a
   manual run there (Actions > CI > Run workflow) of a branch pushed to the
   `github` remote. A change to platform code (paths, processes, ctypes,
   signals) needs that manual run before it merges. Check behaviour that
-  differs between versions (e.g. `subprocess`, `asyncio`) on 3.14 too.
+  differs between versions (e.g. `subprocess`, `asyncio`) on 3.15 too.
 - A bug fix starts with a test that fails without it.
 
 ## Before finishing a change

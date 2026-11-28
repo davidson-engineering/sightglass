@@ -1,6 +1,7 @@
 """Dashboards described by a config file: sightglass --config."""
 
 import asyncio
+import json
 import re
 import time
 import urllib.request
@@ -400,6 +401,49 @@ ids = ["res.host.*"]
         """panel "CPU" (section "Host"): no id 'res.cpu_percent'; """
         "did you mean 'res.host.cpu_percent'?" in err
     )
+
+
+async def test_a_trend_of_a_rated_id_draws_its_rate(tmp_path):
+    state = {"requests": 0}
+
+    async def counter(request):
+        state["requests"] += 100
+        return web.json_response({"requests_total": state["requests"]})
+
+    app = web.Application()
+    app.router.add_get("/api", counter)
+    server = TestServer(app)
+    await server.start_server()
+    text = f"""
+[[source]]
+url = "{server.make_url("/api")}"
+rate = ["requests_total"]
+interval = 0.05
+[[panel]]
+ids = ["requests_total"]
+"""
+    monitor, sources, outputs = build(
+        parser().parse_args(["--config", str(write(tmp_path, text)), "--port", "0"])
+    )
+    outputs[0].announce = False
+    monitor.start(sources=sources, outputs=outputs)
+    try:
+        base = outputs[0].url
+
+        def get(route):
+            with urllib.request.urlopen(base + route, timeout=5) as response:
+                return response.read().decode()
+
+        assert 'data-plot="requests_total"' in get("")
+        await until(lambda: "requests_total" in monitor)
+        rate = monitor["requests_total"].value
+        assert 100 < rate < 5000  # 100 per ~0.05 s, not the count
+        history = json.loads(get("history?id=requests_total&seconds=5&points=50"))
+        points = history["signals"]["requests_total"]
+        assert any(p is not None for p in points)
+    finally:
+        monitor.stop()
+        await server.close()
 
 
 def test_a_panel_error_names_its_section_and_title(tmp_path):

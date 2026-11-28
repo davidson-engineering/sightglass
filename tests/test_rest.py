@@ -1,5 +1,6 @@
 """End-to-end tests: RestSource polling a real aiohttp server."""
 
+import asyncio
 import importlib.util
 import logging
 from pathlib import Path
@@ -396,3 +397,226 @@ def test_flatten_copes_with_numbered_keys_and_long_lists():
     assert (
         out["1"] == "a" and out["k.0"] == 10 and out["k.299"] == 10 and len(out) == 301
     )
+
+
+def test_a_counter_becomes_a_rate_across_polls_and_a_reset():
+    from sightglass.sources._poll import Rates
+
+    rates = Rates(("hits", "events.*"))
+    polls = [(0, 100), (2, 150), (4, 250), (6, 10), (7, 30)]
+    shown = [rates.apply({"hits": c, "other": c}, t) for t, c in polls]
+    assert [s["hits"] for s in shown] == [None, 25.0, 50.0, None, 20.0]
+    assert [s["other"] for s in shown] == [c for _, c in polls]  # not a counter
+    assert rates.apply({"events.x": "n/a"}, 8) == {"events.x": None}
+    assert rates.apply({"events.x": True}, 9) == {"events.x": None}
+
+
+async def test_a_rest_endpoint_shows_its_rated_ids_as_rates(api, consume):
+    monitor = Monitor()
+    api.state["live"] = {"hits": 0, "level": 3}
+    endpoint = Endpoint(url(api, "/live"), rate=("hits",))
+    consume(monitor, RestSource(endpoint, interval=0.05))
+    await until(lambda: "level" in monitor)
+    assert "hits" not in monitor  # the first poll has no rate: no display
+    api.state["live"] = {"hits": 10, "level": 3}
+    await until(lambda: "hits" in monitor and monitor["hits"].value not in ("", None))
+    assert monitor["hits"].value > 0 and monitor["level"].value == 3
+
+
+def test_config_rate(tmp_path):
+    from sightglass.dashboard.sources import build
+
+    source = build({"url": "http://x", "rate": ["a_total", "e.*"]}, 0, tmp_path)
+    assert source.endpoints[0].rate == ("a_total", "e.*")
+    with pytest.raises(ValueError, match="rate in"):
+        build({"url": "http://x", "rate": "a"}, 0, tmp_path)
+
+
+# --- an events feed ----------------------------------------------------------
+
+
+@pytest.fixture
+async def events():
+    """A server whose ``/api/events`` answers the last ``keep`` of
+    ``state["all"]``, newest last, and whose ``/bare`` is that list alone."""
+    state = {"all": [], "keep": 5, "status": 200}
+
+    def last():
+        return state["all"][-state["keep"] :]
+
+    async def api_events(request):
+        if state["status"] != 200:
+            return web.Response(status=state["status"])
+        return web.json_response({"service": {"up": True}, "events": last()})
+
+    async def bare(request):
+        if state["status"] != 200:
+            return web.Response(status=state["status"])
+        return web.json_response(last())
+
+    app = web.Application()
+    app.router.add_get("/api/events", api_events)
+    app.router.add_get("/bare", bare)
+    server = TestServer(app)
+    await server.start_server()
+    server.state = state
+    server.n = 0
+
+    def add(count, **extra):
+        for _ in range(count):
+            server.n += 1
+            state["all"].append(
+                {"id": server.n, "level": "INFO", "message": f"event {server.n}"}
+                | extra
+            )
+
+    server.add = add
+    yield server
+    await server.close()
+
+
+def count(monitor, id="log"):
+    return len(monitor[id].entries) if id in monitor else 0
+
+
+def lines(monitor, id="events"):
+    return monitor[id].to_json().split("\n") if id in monitor else []
+
+
+async def test_events_are_lines_of_one_log_and_make_no_ids(events, consume):
+    events.add(3)
+    monitor = Monitor()
+    consume(
+        monitor,
+        RestSource(
+            Endpoint(
+                url(events, "/api/events"),
+                prefix="svc",
+                id="events",
+                events="events",
+                line="{level} {message} {missing}",
+            ),
+            interval=0.02,
+        ),
+    )
+    await until(lambda: len(lines(monitor)) == 3)
+    assert monitor["events"].entries.maxlen == 20
+    assert monitor["svc.service.up"].value is True  # the rest of the reply, as ever
+    ids = set(monitor.snapshot())
+    for _ in range(40):  # events keep coming, five a poll or so
+        events.add(2)
+        await until(lambda: f"INFO event {events.n} " in monitor["events"].entries)
+    assert set(monitor.snapshot()) == ids == {"events", "svc.service.up"}
+    shown = [int(line.split()[2]) for line in monitor["events"].entries]
+    assert shown == list(range(events.n - 19, events.n + 1))  # each once, in order
+
+
+async def test_each_event_arrives_once_and_in_order_over_many_polls(events, consume):
+    from sightglass import LogMonitor
+
+    monitor = Monitor()
+    monitor.add(LogMonitor("log", lines=1000))
+    consume(
+        monitor,
+        RestSource(
+            Endpoint(url(events, "/bare"), events="", id="log", line="{id}"),
+            interval=0.01,
+        ),
+    )
+    for _ in range(30):
+        events.add(3)
+        await until(
+            lambda: (
+                monitor["log"].entries and monitor["log"].entries[-1] == str(events.n)
+            )
+        )
+    assert list(monitor["log"].entries) == [str(i) for i in range(1, events.n + 1)]
+    assert set(monitor.snapshot()) == {"log"}  # a bare list has no other ids
+
+
+async def test_a_restart_with_lower_cursors_is_followed(events, consume):
+    events.add(5)
+    monitor = Monitor()
+    consume(
+        monitor,
+        RestSource(
+            Endpoint(url(events, "/bare"), events="", id="log", line="{message}"),
+            interval=0.02,
+        ),
+    )
+    await until(lambda: count(monitor) == 5)
+    events.state["all"] = []  # the service starts again, counting from 1
+    events.n = 0
+    events.add(2, message="after restart")
+    await until(lambda: count(monitor) == 7)
+    assert list(monitor["log"].entries)[-2:] == ["after restart"] * 2
+
+
+async def test_a_failed_poll_sends_no_events_and_the_next_catches_up(events, consume):
+    events.add(2)
+    events.state["keep"] = 100
+    monitor = Monitor()
+    consume(
+        monitor,
+        RestSource(
+            Endpoint(url(events, "/bare"), events="", id="log", line="{id}"),
+            interval=0.02,
+        ),
+    )
+    await until(lambda: count(monitor) == 2)
+    events.state["status"] = 500
+    events.add(2)
+    await asyncio.sleep(0.1)
+    assert count(monitor) == 2
+    events.state["status"] = 200
+    await until(lambda: count(monitor) == 4)
+    assert list(monitor["log"].entries) == ["1", "2", "3", "4"]
+
+
+def test_events_compare_numbers_as_numbers_and_text_as_text():
+    endpoint = Endpoint("http://x", id="log", events="", cursor="t", line="{t}")
+    seen = [None]
+    from sightglass.sources.rest import new_events
+
+    one = [{"t": "2026-01-01T10:00:00"}, {"t": "2026-01-01T09:00:00"}]
+    assert new_events(one, endpoint, seen) == [
+        "2026-01-01T09:00:00",
+        "2026-01-01T10:00:00",
+    ]
+    two = [*one, {"t": "2026-01-01T11:00:00"}, {"nothing": 1}]
+    assert new_events(two, endpoint, seen) == ["2026-01-01T11:00:00"]
+    numbers = Endpoint("http://x", id="log", events="", cursor="n", line="{n}")
+    seen = [None]
+    assert new_events([{"n": 9}, {"n": 10}], numbers, seen) == [
+        "9",
+        "10",
+    ]  # not "10" < "9"
+    assert new_events([{"n": 10}, {"n": 11}], numbers, seen) == ["11"]
+    assert new_events([{"n": 0}], numbers, seen) == ["0"]  # lower: a restart
+
+
+def test_the_default_line_is_the_event_as_json_on_one_line():
+    from sightglass.sources.rest import new_events
+
+    endpoint = Endpoint("http://x", id="log", events="e")
+    assert new_events({"e": [{"id": 1, "m": "a\nb"}]}, endpoint, [None]) == [
+        '{"id":1,"m":"a\\nb"}'
+    ]
+    template = Endpoint("http://x", id="log", events="e", line="{m} {nope.x}")
+    assert new_events({"e": [{"id": 1, "m": "a\nb"}]}, template, [None]) == [
+        '{"id":1,"m":"a\\nb"}'
+    ]  # a template that can't be filled falls back to the JSON
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"events": "e"}, "id or a prefix"),
+        ({"line": "{a}"}, "go with events"),
+        ({"events": "e", "id": "l", "line": "{a"}, "format string"),
+        ({"events": "e", "id": "l", "cursor": ""}, "cursor"),
+    ],
+)
+def test_events_options_are_validated(options, message):
+    with pytest.raises(ValueError, match=message):
+        Endpoint("http://x", **options)

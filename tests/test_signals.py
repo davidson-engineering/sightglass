@@ -121,7 +121,7 @@ def test_the_monitor_records_values_as_sent():
         "axes.X.pos": "1.5",
         "job.state": "running",
     }
-    assert monitor["rx"].text == "2.0"
+    assert monitor["rx"].text == "2"
     assert monitor.signals["rx"].version == monitor.version  # the batch it came in
 
 

@@ -2,9 +2,11 @@ import pytest
 
 from sightglass import (
     Coordinate,
+    Counters,
     IndicatorLamp,
     LogMonitor,
     MachineState,
+    Monitor,
     ProgressBar,
     RangeBar,
     Sparkline,
@@ -161,6 +163,33 @@ def test_coordinate():
         pos.update([1, 2])
 
 
+def test_counters():
+    jobs = Counters("jobs.totals", ["submitted", "done", "failed"], label="Jobs")
+    assert jobs.to_json() == {"submitted": "-", "done": "-", "failed": "-"}
+    jobs.update({"submitted": 44, "done": 41})
+    jobs.update_field("failed", 2)
+    assert jobs.to_json() == {"submitted": "44", "done": "41", "failed": "2"}
+    assert jobs.render(80) == "Jobs submitted 44  done 41  failed 2"
+    assert jobs.describe()["fields"] == ["submitted", "done", "failed"]
+    with pytest.raises(KeyError):
+        jobs.update_field("lost", 1)
+    with pytest.raises(KeyError):
+        jobs.update({"lost": 1})
+
+
+def test_counters_format_overrides_the_default():
+    rate = Counters("r", ["a"], format=TextFormat(precision=1))
+    rate.update_field("a", 3)
+    assert rate.to_json() == {"a": "3.0"}
+
+
+def test_counters_through_a_monitor():
+    monitor = Monitor()
+    monitor.add(Counters("jobs.totals", ["done", "failed"]))
+    monitor.set("jobs.totals.done", 41)
+    assert monitor["jobs.totals"].to_json() == {"done": "41", "failed": "-"}
+
+
 def test_copy_is_independent():
     original = RangeBar("velocity")
     clone = original.copy("X.velocity")
@@ -221,7 +250,7 @@ def test_sparkline_interval_keeps_one_point_per_interval(monkeypatch):
         spark.update(value)
     # Updates within an interval replace its point: the chart covers
     # points x interval seconds, and its last point is the latest value.
-    assert spark.to_json() == {"text": "6.0", "values": [3.0, 5.0, 6.0]}
+    assert spark.to_json() == {"text": "6", "values": [3, 5, 6]}
     with pytest.raises(ValueError, match="interval"):
         Sparkline("altitude", interval=0)
 
@@ -245,3 +274,16 @@ def test_lamps_take_styles_like_other_elements():
     lamp = IndicatorLamp("pump", on_style=lit)
     lamp.update(True)
     assert lamp.render(20).endswith(lit.apply("●"))
+
+
+def test_sparkline_keeps_whole_numbers_whole():
+    for value in [36, "36"]:
+        spark = Sparkline("queue")
+        spark.update(value)
+        assert spark.to_json() == {"text": "36", "values": [36]}
+    spark = Sparkline("net", scale=1 / 1024)
+    spark.update(1000)
+    assert spark.text == "0.976562"
+    text = TextElement("load")
+    text.update(0.0205078)
+    assert text.to_json() == "0.0205078"

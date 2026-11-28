@@ -56,3 +56,29 @@ number of ids alone; a page's cost is still ids x polls a second x pages.
 For the generic page, a few hundred ids polled every second or two is
 comfortable; at 900 ids polled five times a second expect about 150 KB/s to
 each page.
+
+
+## Trends on the generic page
+
+With `--history`, the generic page draws a small trend beside each value that
+history records (a number), the way a `Sparkline` is drawn. One request a
+second feeds them all: `GET /history?id=*&seconds=60&step=1` when the page
+opens, then only the points since the last one. Ids that are not numbers come
+back with no history and get no trend. Without `--history` the page is
+unchanged.
+
+Measured in headless Chromium on Linux, values changing twice a second, the
+page's own work (including showing the values) from Chrome's task timer:
+
+| Numeric ids | Request, each second | Page, one core |
+| --- | --- | --- |
+| 100 | 4.6 KB | 3% |
+| 1000 | 58 KB | 11% |
+| 5000 | 240–300 KB | 51% |
+
+Past **1000 values** on the page, it draws no trends and says so at the top
+of the page: that is the count the page keeps up with comfortably. (The count
+is of all values, numbers or not.) Pages with a `trend` panel or a
+`data-plot` are not affected.
+
+Screenshots in both themes at desktop and 390 px are in `docs/trends/`.

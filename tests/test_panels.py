@@ -282,3 +282,77 @@ def test_the_page_has_no_legend_and_its_identity_is_in_the_title_bar(tmp_path):
     assert "top to bottom" not in page and "<span>" not in page
     header = page[page.index("<header>") : page.index("</header>")]
     assert 'class="identity"' in header
+
+
+def test_a_log_panel_shows_a_log_monitor_of_its_length(tmp_path):
+    found = dashboard(
+        tmp_path,
+        '[[panel]]\ntype = "log"\ntitle = "Events"\nid = "svc.events"\n'
+        "lines = 8\ntimestamp = true\n",
+    )
+    (panel,) = found.panels
+    assert (panel.type, panel.ids, panel.lines, panel.timestamp) == (
+        "log",
+        ("svc.events",),
+        8,
+        True,
+    )
+    (element,) = found.elements()
+    assert (element.id, element.lines, element.timestamp) == ("svc.events", 8, True)
+    assert 'class="lines" data-bind="svc.events" data-mode="log"' in found.page()
+    assert 'data-values="off"' not in found.page()  # a log reads live values
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ('[[panel]]\ntype = "log"', "needs an id"),
+        ('[[panel]]\ntype = "log"\nid = "a"\nlines = 0', "lines"),
+        ('[[panel]]\ntype = "log"\nid = "a"\nlines = "5"', "lines"),
+        ('[[panel]]\ntype = "log"\nid = "a"\ntimestamp = 1', "timestamp"),
+        ('[[panel]]\ntype = "log"\nid = "a"\nunits = "x"', "unknown 'units'"),
+    ],
+)
+def test_bad_log_panels_are_one_line_errors(tmp_path, text, message):
+    with pytest.raises(ValueError, match=message):
+        dashboard(tmp_path, text)
+
+
+def test_a_rest_source_in_events_mode_is_read_from_the_file(tmp_path):
+    path = tmp_path / "dashboard.toml"
+    path.write_text(
+        """
+[[source]]
+url = "http://127.0.0.1:1/api/events"
+prefix = "svc"
+id = "events"
+events = "events"
+cursor = "seq"
+line = "{time} {level}: {message}"
+
+[[panel]]
+type = "log"
+id = "events"
+""",
+        "utf-8",
+    )
+    (source,) = load(path).sources
+    (endpoint,) = source.endpoints
+    assert (endpoint.events, endpoint.cursor, endpoint.log) == (
+        "events",
+        "seq",
+        "events",
+    )
+    assert endpoint.line == "{time} {level}: {message}"
+    assert [e.id for e in source.elements] == ["events"]
+    for bad, message in [
+        ('cursor = "seq"', "go with events"),
+        ('events = "e"', "id or a prefix"),
+        ('events = "e"\nid = "x"\nline = 5', "line .* must be text"),
+        ('events = "e"\nid = "x"\nline = "{a"', "format string"),
+    ]:
+        path.write_text(
+            f'[[source]]\nurl = "http://x"\n{bad}\n[[panel]]\nids = ["a"]', "utf-8"
+        )
+        with pytest.raises(ValueError, match=message):
+            load(path)

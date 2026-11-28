@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
@@ -62,6 +63,49 @@ class Feed:
         }
 
 
+def compile_patterns(patterns: tuple[str, ...]) -> re.Pattern[str] | None:
+    """One expression for id patterns (``*`` stands for any characters), or
+    None if there are none; use it with ``fullmatch``."""
+    if not patterns:
+        return None
+    parts = ("".join(".*" if c == "*" else re.escape(c) for c in p) for p in patterns)
+    return re.compile("|".join(f"(?:{part})" for part in parts), re.DOTALL)
+
+
+class Rates:
+    """Turns the counters named by ``patterns`` into a change per second.
+
+    The id keeps its name and carries the rate in place of the count. The first
+    count of an id gives no value (None), as does one that is lower than the
+    last (a restart: the rate starts again from the new count) and one that is
+    not a number."""
+
+    def __init__(self, patterns: tuple[str, ...]) -> None:
+        self._match = compile_patterns(patterns)
+        self._last: dict[str, tuple[float, float]] = {}  # id: (count, time)
+
+    def apply(self, values: Update, now: float) -> Update:
+        """``values`` with each counter replaced by its rate; ``now`` is when
+        the poll's reply arrived, in seconds."""
+        if self._match is None:
+            return values
+        out = dict(values)
+        for id, count in values.items():
+            if self._match.fullmatch(id) is None:
+                continue
+            if isinstance(count, bool) or not isinstance(count, int | float):
+                self._last.pop(id, None)
+                out[id] = None
+                continue
+            before = self._last.get(id)
+            self._last[id] = (count, now)
+            if before is None or count < before[0] or now <= before[1]:
+                out[id] = None
+            else:
+                out[id] = (count - before[0]) / (now - before[1])
+        return out
+
+
 def describe(error: BaseException) -> str:
     """An error from a request, in our words: aiohttp words a refused
     connection to an ``http://`` URL with ``ssl:default``, which suggests a
@@ -109,6 +153,7 @@ async def poll(
     queue: asyncio.Queue[Update],
     name: str,
     feed: Feed | None = None,
+    rates: Rates | None = None,
 ) -> None:
     """Call ``fetch`` every ``every`` seconds and queue what it returns.
 
@@ -116,7 +161,8 @@ async def poll(
     failed, is queued as :data:`BLANK` once, so nothing stale stays on show. A
     failure is logged when it starts (and again if its cause changes) and when
     it ends, not on every poll; any
-    exception counts as one, so nothing a reply holds can end the polling."""
+    exception counts as one, so nothing a reply holds can end the polling.
+    Counters named by ``rates`` are queued as their rate per second."""
     loop = asyncio.get_running_loop()
     down = False
     logged = ""  # the failure last warned about
@@ -147,6 +193,8 @@ async def poll(
                 logger.warning("%s is answering again", name)
             down = False
             logged = ""
+            if rates is not None:
+                reply = rates.apply(reply, time.perf_counter())
         valid = {id: value for id, value in reply.items() if value is not None}
         update = {**valid, **dict.fromkeys(showing - valid.keys(), BLANK)}
         showing = set(valid)

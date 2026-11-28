@@ -16,6 +16,7 @@ from playwright.async_api import async_playwright, expect
 
 from sightglass import (
     Coordinate,
+    Counters,
     IndicatorLamp,
     LogMonitor,
     Monitor,
@@ -255,6 +256,29 @@ async def test_generic_page_shows_the_programs_own_resources(page, serve):
         re.compile(r"\d")
     )
     await expect(page.locator(".row", has_text="Uptime")).to_contain_text(" s")
+
+
+@pytest.mark.parametrize("theme", ["classic", "terminal"])
+async def test_counters_share_one_row_and_wrap_on_a_phone(page, serve, theme):
+    monitor = Monitor()
+    fields = ["submitted", "done", "retried", "failed"]
+    monitor.add(Counters("jobs.totals", fields, label="Totals"))
+    monitor.update(
+        {f"jobs.totals.{f}": n for f, n in zip(fields, (44, 41, 3, 2), strict=True)}
+    )
+    await page.goto(serve(None, monitor, theme=theme))
+    cells = page.locator(".counter b")
+    await expect(cells).to_have_text(["44", "41", "3", "2"])
+
+    async def tops():
+        return await page.locator(".counter").evaluate_all(
+            "els => els.map(e => Math.round(e.getBoundingClientRect().top))"
+        )
+
+    assert len(set(await tops())) == 1  # desktop: one row
+    await page.set_viewport_size({"width": 390, "height": 800})
+    narrow = await page.evaluate("document.documentElement.scrollWidth")
+    assert narrow <= 390  # wraps rather than overflowing
 
 
 async def test_generic_page_offers_the_terminal_theme(page, serve):
@@ -1192,3 +1216,92 @@ async def test_stale_after_is_refreshed_by_ids_that_arrive_only_as_fresh(page, s
         await expect(wind).not_to_have_attribute("data-stale", "true")
     assert any('"fresh": ["wind"]' in str(frame) for frame in frames)
     await expect(wind).to_have_attribute("data-stale", "true")  # then it stops
+
+
+@pytest.mark.parametrize("theme", ["classic", "terminal"])
+@pytest.mark.parametrize("width", [1280, 390])
+async def test_a_log_panel_shows_the_newest_lines_at_the_bottom_in_both_themes(
+    page, serve, tmp_path, theme, width
+):
+    """The ``log`` panel of a config file: the last lines of a ``LogMonitor``,
+    oldest at the top, a warning in its colour, long lines cut off to the
+    panel's width rather than widening the page."""
+    from sightglass.dashboard import load
+
+    config = tmp_path / "dashboard.toml"
+    config.write_text(
+        f"""
+theme = "{theme}"
+[[source]]
+url = "http://127.0.0.1:1/x"
+[[panel]]
+type = "log"
+title = "Events"
+id = "svc.events"
+lines = 6
+"""
+    )
+    dashboard = load(config)
+    monitor = Monitor()
+    monitor.add(*dashboard.elements())
+    for i in range(1, 10):
+        level = "WARNING" if i == 9 else "INFO"
+        monitor.set("svc.events", f"{level} event {i} " + "long " * 40)
+    await page.set_viewport_size({"width": width, "height": 800})
+    await page.goto(serve(None, monitor, html=dashboard.page(), theme=theme))
+    rows = page.locator(".panel.log .lines > div")
+    await expect(rows).to_have_count(6)  # the monitor keeps the last six
+    await expect(rows.first).to_contain_text("event 4")
+    await expect(rows.last).to_contain_text("event 9")
+    await expect(rows.last).to_have_attribute("data-level", "warning")
+    assert await page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    box = await page.locator(".panel.log").bounding_box()
+    last = await rows.last.bounding_box()
+    assert (
+        box["y"] <= last["y"]
+        and last["y"] + last["height"] <= box["y"] + box["height"] + 1
+    )
+    assert box["x"] >= 0 and box["x"] + box["width"] <= width
+
+
+async def test_generic_page_draws_a_trend_beside_each_number_when_history_is_on(
+    page, serve
+):
+    monitor = Monitor(history=60)
+    for n in range(4):
+        monitor.update({"cpu": n * 10, "state": "idle"})
+        await asyncio.sleep(1.1)
+    await page.goto(serve(None, monitor))
+    await expect(page.locator("[data-trend=cpu]:not([hidden]) polyline")).to_have_count(
+        1
+    )
+    await expect(page.locator("[data-trend=cpu] polyline")).to_have_attribute(
+        "points", re.compile(r"\d,\d.* .*\d,\d")
+    )
+    await expect(page.locator("[data-trend=state]")).to_be_hidden()
+    # it follows: points since the last request are added
+    before = await page.locator("[data-trend=cpu] polyline").get_attribute("points")
+    monitor.set("cpu", 500)
+    await expect(page.locator("[data-trend=cpu] polyline")).not_to_have_attribute(
+        "points", before, timeout=5_000
+    )
+
+
+async def test_generic_page_has_no_trends_without_history(page, serve):
+    monitor = Monitor()
+    monitor.update({"cpu": 1, "state": "idle"})
+    await page.goto(serve(None, monitor))
+    await expect(page.get_by_text("cpu", exact=True)).to_be_visible()
+    await page.wait_for_timeout(1500)
+    await expect(page.locator("[data-trend]")).to_have_count(0)
+
+
+async def test_generic_page_stops_drawing_trends_past_a_thousand_values(page, serve):
+    monitor = Monitor(history=60, max_elements=2000)
+    monitor.update({f"v{n}": n for n in range(1001)})
+    await page.goto(serve(None, monitor))
+    await expect(page.locator(".note")).to_contain_text("1001 values")
+    await page.wait_for_timeout(1500)
+    await expect(page.locator("[data-trend]")).to_have_count(0)
