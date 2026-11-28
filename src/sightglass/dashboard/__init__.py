@@ -48,7 +48,7 @@ import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..elements import Element
 from ..monitor import MAX_ELEMENTS, THEMES, TITLE, Monitor, Source
@@ -170,11 +170,10 @@ class Dashboard:
         every source has answered; ``None`` unless every source polls (the
         others can deliver an id at any time, so nothing is known to be
         missing)."""
-        if not self.sources or not all(
-            getattr(source, "feeds", None) for source in self.sources
-        ):
+        per_source = [getattr(source, "feeds", None) for source in self.sources]
+        if not per_source or not all(per_source):
             return None
-        return Audit(self)
+        return Audit(self, [feed for feeds in per_source for feed in feeds])
 
     def web(
         self,
@@ -215,19 +214,24 @@ class Dashboard:
         return monitor
 
 
+class Answering(Protocol):
+    """What a polling source's feed offers the audit (``sources._poll.Feed``)."""
+
+    async def first_answer(self) -> None: ...
+
+
 class Audit:
     """An output that, once every polling source has had a successful poll,
     warns once for each panel that shows no id (``Dashboard.unmatched``)."""
 
     SETTLE = 0.25  # seconds for the first replies' values to be applied
 
-    def __init__(self, dashboard: Dashboard) -> None:
+    def __init__(self, dashboard: Dashboard, feeds: list[Answering]) -> None:
         self.dashboard = dashboard
+        self.feeds = feeds
 
     async def run(self, monitor: Monitor) -> None:
-        feeds = [f for source in self.dashboard.sources for f in source.feeds]  # type: ignore[attr-defined]
-        while not all(feed.answered for feed in feeds):  # noqa: ASYNC110
-            await asyncio.sleep(0.05)
+        await asyncio.gather(*(feed.first_answer() for feed in self.feeds))
         await asyncio.sleep(self.SETTLE)
         for warning in self.dashboard.unmatched(monitor.signals.ids()):
             logger.warning("%s", warning)

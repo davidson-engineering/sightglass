@@ -34,12 +34,17 @@ class Feed:
     def __init__(self, name: str) -> None:
         self.name = name
         self.failing = False
-        self.answered = False  # a poll has succeeded
+        self._answered = asyncio.Event()  # set by the first poll that succeeds
         self._polls: deque[tuple[float, float]] = deque()  # (ended, took)
+
+    async def first_answer(self) -> None:
+        """Return once a poll has succeeded (at once if one already has)."""
+        await self._answered.wait()
 
     def record(self, ended: float, took: float, failed: bool) -> None:
         self.failing = failed
-        self.answered = self.answered or not failed
+        if not failed:
+            self._answered.set()
         self._polls.append((ended, took))
         while self._polls and self._polls[0][0] < ended - self.WINDOW:
             self._polls.popleft()
